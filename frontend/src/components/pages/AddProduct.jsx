@@ -262,6 +262,7 @@ const AddProduct = () => {
         serialNumber: serialNumber,
         name: name,
         brand: brand,
+        username: auth?.username || auth?.user || null,
       });
 
       const res = await axios.post(`${apiBaseUrl}/addproduct`, profileData, {

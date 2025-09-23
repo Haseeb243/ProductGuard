@@ -6,7 +6,11 @@ node_modules/
 
 # Environment files
 .env
-.env.*
+.env.local
+.env.production
+.env.test
+# But allow .env.example
+!.env.example
 
 # OS files
 .DS_Store

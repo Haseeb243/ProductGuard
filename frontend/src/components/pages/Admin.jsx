@@ -104,6 +104,11 @@ const SIDEBAR_LINKS = [
     label: "Retailers",
     to: "/manage-account?role=retailer",
   },
+  {
+    icon: <DashboardIcon />,
+    label: "Support",
+    to: "/support-dashboard",
+  },
 ];
 
 const Admin = () => {
