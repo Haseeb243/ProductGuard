@@ -1,0 +1,26 @@
+# Node modules
+node_modules/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+
+# Uploads and generated files
+backend/public/uploads/
+
+# Build and cache
+package-lock.json
+
+# Ignore coverage
+coverage/
+
