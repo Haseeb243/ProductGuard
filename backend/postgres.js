@@ -7,7 +7,7 @@ const multer = require("multer");
 const { Parser } = require("json2csv");
 const emailService = require("./emailService");
 const chatService = require("./chatService");
-const http = require('http');
+const http = require("http");
 require("dotenv").config();
 
 const app = express();
@@ -27,8 +27,7 @@ app.use(
   })
 );
 
-// Initialize Socket.IO for chat
-const io = chatService.initializeChat(server, corsOrigins);
+// We'll initialize Socket.IO after setting up the DB client below
 
 const port = process.env.PORT || 5000;
 
@@ -42,12 +41,15 @@ const client = new Client({
 
 client.connect();
 
+// Initialize Socket.IO for chat (pass DB client for persistence)
+const io = chatService.initializeChat(server, corsOrigins, client);
+
 // auth
 
-function createAccount(username, password, role, adminUser) {
+function createAccount(username, password, role, email, adminUser) {
   client.query(
-    "INSERT INTO auth (username, password, role) VALUES ($1, $2, $3)",
-    [username, password, role],
+    "INSERT INTO auth (username, password, role, email) VALUES ($1, $2, $3, $4)",
+    [username, password, role, email],
     (err, res) => {
       if (err) {
         console.log(err.message);
@@ -141,16 +143,20 @@ function addProduct(serialNumber, name, brand, username) {
             "SELECT email FROM auth WHERE username = $1",
             [username]
           );
-          
+
           if (userResult.rows.length > 0 && userResult.rows[0].email) {
             const userEmail = userResult.rows[0].email;
             const productData = {
               productName: name,
               brand: brand,
-              serialNumber: serialNumber
+              serialNumber: serialNumber,
             };
-            
-            await emailService.sendProductRegistrationEmail(client, userEmail, productData);
+
+            await emailService.sendProductRegistrationEmail(
+              client,
+              userEmail,
+              productData
+            );
             console.log(`Product registration email sent to ${userEmail}`);
           }
         } catch (emailErr) {
@@ -182,8 +188,14 @@ app.post("/auth/:username/:password", async (req, res) => {
 });
 
 app.post("/addaccount", (req, res) => {
-  const { username, password, role } = req.body;
-  createAccount(username, password, role, req.user?.username || "admin");
+  const { username, password, role, email } = req.body;
+  createAccount(
+    username,
+    password,
+    role,
+    email || null,
+    req.user?.username || "admin"
+  );
   res.send("Data inserted");
 });
 
@@ -268,8 +280,10 @@ app.get("/product/serialNumber", async (req, res) => {
 });
 
 app.post("/addproduct", (req, res) => {
-  const { serialNumber, name, brand } = req.body;
-  addProduct(serialNumber, name, brand, req.user?.username || "admin");
+  const { serialNumber, name, brand, username } = req.body;
+  // Prefer username from body (frontend sends the logged-in manufacturer)
+  const actor = username || req.user?.username || "admin";
+  addProduct(serialNumber, name, brand, actor);
   res.send("Data inserted");
 });
 
@@ -284,7 +298,14 @@ function logLoginAttempt(username, success, ip) {
   );
 }
 
-function logProductScan(serialNumber, username, location, isAuthentic, ipAddress = null, userAgent = null) {
+function logProductScan(
+  serialNumber,
+  username,
+  location,
+  isAuthentic,
+  ipAddress = null,
+  userAgent = null
+) {
   // Simple suspicion detection logic
   let isSuspicious = false;
   let suspicionReason = null;
@@ -297,7 +318,16 @@ function logProductScan(serialNumber, username, location, isAuthentic, ipAddress
 
   client.query(
     "INSERT INTO product_scans (serial_number, username, location, is_authentic, is_suspicious, suspicion_reason, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-    [serialNumber, username, location, isAuthentic, isSuspicious, suspicionReason, ipAddress, userAgent],
+    [
+      serialNumber,
+      username,
+      location,
+      isAuthentic,
+      isSuspicious,
+      suspicionReason,
+      ipAddress,
+      userAgent,
+    ],
     async (err) => {
       if (err) {
         console.log(err.message);
@@ -328,10 +358,14 @@ function logProductScan(serialNumber, username, location, isAuthentic, ipAddress
                 scanTime: new Date(),
                 suspicionReason: suspicionReason,
                 ipAddress: ipAddress,
-                location: location
+                location: location,
               };
 
-              await emailService.sendSuspiciousScanEmail(client, product.email, scanData);
+              await emailService.sendSuspiciousScanEmail(
+                client,
+                product.email,
+                scanData
+              );
               console.log(`Suspicious scan alert sent to ${product.email}`);
             }
           } catch (emailErr) {
@@ -357,7 +391,7 @@ function logActivity(username, action, target, details) {
 app.post("/scan-product", async (req, res) => {
   const { serialNumber, username, location, isAuthentic } = req.body;
   const ipAddress = req.ip || req.connection.remoteAddress;
-  const userAgent = req.get('User-Agent');
+  const userAgent = req.get("User-Agent");
 
   try {
     // Check if product exists
@@ -367,7 +401,14 @@ app.post("/scan-product", async (req, res) => {
     );
 
     // Log the scan regardless of whether the product exists or not
-    logProductScan(serialNumber, username, location, isAuthentic, ipAddress, userAgent);
+    logProductScan(
+      serialNumber,
+      username,
+      location,
+      isAuthentic,
+      ipAddress,
+      userAgent
+    );
 
     // Return appropriate response based on product existence
     if (productExists.rows.length === 0) {
@@ -519,18 +560,37 @@ app.get("/download-logs/:type", async (req, res) => {
 app.get("/support/chat-history", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    const chatHistory = await chatService.getChatHistory(client, limit);
-    
+    const conversationKey = req.query.conversationKey || null;
+    const chatHistory = await chatService.getChatHistory(
+      client,
+      limit,
+      conversationKey
+    );
+
     res.json({
       success: true,
-      messages: chatHistory
+      messages: chatHistory,
     });
   } catch (err) {
     console.error("Error fetching chat history:", err);
     res.status(500).json({
       success: false,
-      message: "Error fetching chat history"
+      message: "Error fetching chat history",
     });
+  }
+});
+
+// List active conversations (admin use)
+app.get("/support/conversations", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const rows = await chatService.listConversations(client, limit);
+    res.json({ success: true, conversations: rows });
+  } catch (e) {
+    console.error("Error fetching conversations:", e);
+    res
+      .status(500)
+      .json({ success: false, message: "Error fetching conversations" });
   }
 });
 
@@ -540,13 +600,13 @@ app.get("/support/online-users", (req, res) => {
     const onlineUsers = chatService.getOnlineUsers();
     res.json({
       success: true,
-      users: onlineUsers
+      users: onlineUsers,
     });
   } catch (err) {
     console.error("Error fetching online users:", err);
     res.status(500).json({
       success: false,
-      message: "Error fetching online users"
+      message: "Error fetching online users",
     });
   }
 });
@@ -554,26 +614,26 @@ app.get("/support/online-users", (req, res) => {
 // Send system message
 app.post("/support/system-message", (req, res) => {
   try {
-    const { message, room = 'support' } = req.body;
-    
+    const { message, room = "support" } = req.body;
+
     if (!message) {
       return res.status(400).json({
         success: false,
-        message: "Message is required"
+        message: "Message is required",
       });
     }
-    
+
     chatService.sendSystemMessage(message, room);
-    
+
     res.json({
       success: true,
-      message: "System message sent"
+      message: "System message sent",
     });
   } catch (err) {
     console.error("Error sending system message:", err);
     res.status(500).json({
       success: false,
-      message: "Error sending system message"
+      message: "Error sending system message",
     });
   }
 });
@@ -583,29 +643,29 @@ app.get("/support/notifications", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const status = req.query.status; // 'sent', 'failed', 'queued'
-    
+
     let query = "SELECT * FROM notification_log";
     const params = [];
-    
+
     if (status) {
       query += " WHERE status = $1";
       params.push(status);
     }
-    
+
     query += " ORDER BY created_at DESC LIMIT $" + (params.length + 1);
     params.push(limit);
-    
+
     const result = await client.query(query, params);
-    
+
     res.json({
       success: true,
-      notifications: result.rows
+      notifications: result.rows,
     });
   } catch (err) {
     console.error("Error fetching notifications:", err);
     res.status(500).json({
       success: false,
-      message: "Error fetching notifications"
+      message: "Error fetching notifications",
     });
   }
 });
@@ -614,40 +674,52 @@ app.get("/support/notifications", async (req, res) => {
 app.post("/support/test-email", async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Email is required"
+        message: "Email is required",
       });
     }
-    
+
     const testData = {
       productName: "Test Product",
       brand: "Test Brand",
-      serialNumber: "TEST-123"
+      serialNumber: "TEST-123",
     };
-    
-    const result = await emailService.sendProductRegistrationEmail(client, email, testData);
-    
+
+    const result = await emailService.sendProductRegistrationEmail(
+      client,
+      email,
+      testData
+    );
+
     res.json({
       success: result,
-      message: result ? "Test email sent successfully" : "Failed to send test email"
+      message: result
+        ? "Test email sent successfully"
+        : "Failed to send test email",
     });
   } catch (err) {
     console.error("Error sending test email:", err);
     res.status(500).json({
       success: false,
-      message: "Error sending test email"
+      message: "Error sending test email",
     });
   }
 });
 
 server.listen(port, () => {
   console.log(`Server is running on port ${port} with Socket.IO support`);
-  
-  // Test email configuration on startup
-  emailService.testEmailConfiguration();
+
+  // Test email configuration on startup (only when enabled)
+  if (
+    (process.env.ENABLE_EMAIL_NOTIFICATIONS || "false").toLowerCase() === "true"
+  ) {
+    emailService.testEmailConfiguration();
+  } else {
+    console.log("Email notifications disabled; skipping SMTP verification.");
+  }
 });
 // Update /profileAll endpoint to support role-based filtering
 app.get("/profileAll", async (req, res) => {

@@ -21,6 +21,7 @@ const AddAccount = () => {
   const [pwd, setPwd] = useState("");
   const [pwd2, setPwd2] = useState("");
   const [role, setRole] = React.useState(options[0]);
+  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [website, setWebsite] = useState("");
@@ -77,6 +78,7 @@ const AddAccount = () => {
     console.log("pwd: " + pwd);
     console.log("pwd2: " + pwd2);
     console.log("role: " + role);
+    console.log("email: " + email);
     console.log("image: " + image.file.name);
     console.log("name: " + name);
     console.log("description: " + description);
@@ -88,6 +90,7 @@ const AddAccount = () => {
         username: user,
         password: pwd,
         role: role,
+        email: email,
       });
 
       const profileData = JSON.stringify({
@@ -98,6 +101,7 @@ const AddAccount = () => {
         location: location,
         image: image.file.name,
         role: role,
+        email: email,
       });
 
       const res = await axios.post(`${apiBaseUrl}/addaccount`, accountData, {
@@ -118,6 +122,7 @@ const AddAccount = () => {
       setPwd("");
       setPwd2("");
       setRole(options[0]);
+      setEmail("");
       setName("");
       setDescription("");
       setWebsite("");
@@ -200,6 +205,17 @@ const AddAccount = () => {
                 }}
                 options={options}
                 renderInput={(params) => <TextField {...params} label="Role" />}
+                className="bg-white/50"
+              />
+
+              <TextField
+                fullWidth
+                id="outlined-basic"
+                label="Email"
+                type="email"
+                variant="outlined"
+                onChange={(e) => setEmail(e.target.value)}
+                value={email}
                 className="bg-white/50"
               />
 
