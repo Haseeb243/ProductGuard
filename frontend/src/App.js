@@ -17,6 +17,7 @@ import Product from './components/pages/Product';
 import AuthenticProduct from './components/pages/AuthenticProduct';
 import FakeProduct from './components/pages/FakeProduct';
 import UpdateProductDetails from './components/pages/UpdateProductDetails';
+import SupportDashboard from './components/SupportDashboard';
 
 function App() {
 
@@ -37,7 +38,7 @@ function App() {
           <Route exact path='/admin' element={< Admin />}></Route>
           <Route exact path='/add-account' element={< AddAccount />}></Route>
           <Route exact path='/manage-account' element={< ManageAccount />}></Route> 
-
+          <Route exact path='/support-dashboard' element={< SupportDashboard />}></Route>
         </Route>
 
         <Route element={<RequireAuth allowedRoles={["manufacturer", "supplier", "retailer"]} />}>
