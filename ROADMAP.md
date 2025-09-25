@@ -103,18 +103,18 @@ Optional (later)
 
 ## 1.3.3 Communication & Customer Support Module
 
-Status: [ ]
+Status: [x]
 
 Essentials (low-complexity)
 
-- [ ] Email notifications using free SMTP via `nodemailer`
-  - [ ] Trigger on product registration and when a scan is suspicious
-  - [ ] Keep templates simple (plain text or minimal HTML)
+- [x] Email notifications using free SMTP via `nodemailer`
+  - [x] Trigger on product registration and when a scan is suspicious
+  - [x] Keep templates simple (plain text or minimal HTML)
 
 Optional (later)
 
-- [ ] Live chat using Socket.IO (self-hosted)
-- [ ] Support inbox UI and message logs
+- [x] Live chat using Socket.IO (self-hosted)
+- [x] Support inbox UI and message logs
 
 ---
 
@@ -248,43 +248,6 @@ Milestone 3: Inventory Basics + Notifications (1.3.7, 1.3.3)
 
 ---
 
-## Quick DDL Sketches (to include in a migration)
-
-Note: Adjust types as needed for your Postgres version.
-
-```sql
--- Support chat messages
-CREATE TABLE IF NOT EXISTS support_chats (
-  id SERIAL PRIMARY KEY,
-  username TEXT,
-  role TEXT,
-  message TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Inventory
-CREATE TABLE IF NOT EXISTS inventory (
-  id SERIAL PRIMARY KEY,
-  serial_number TEXT NOT NULL,
-  owner_role TEXT NOT NULL,
-  owner_username TEXT,
-  status TEXT NOT NULL,
-  qty INTEGER DEFAULT 1,
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Optional: chain events index
-CREATE TABLE IF NOT EXISTS chain_events (
-  id SERIAL PRIMARY KEY,
-  serial_number TEXT,
-  event_name TEXT NOT NULL,
-  tx_hash TEXT NOT NULL,
-  payload JSONB,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
----
 
 ## Completion snapshot (estimates)
 
