@@ -20,20 +20,56 @@ A blockchain-powered product authentication platform with a React frontend, Node
 
 ## Overview
 
-ProductGuard lets manufacturers register products on-chain and generate QR codes. Suppliers/retailers update product history while customers can scan a QR code to verify authenticity. The app includes an admin dashboard, role-based access, file uploads, logs, and analytics.
+ProductGuard lets manufacturers register products on-chain and generate QR codes. Suppliers/retailers update product history while customers can scan a QR code to verify authenticity. The app includes an admin dashboard with comprehensive audit logs, analytics, role-based access, file uploads, and real-time monitoring.
+
+**Key Features:**
+
+- **Product Authentication**: Blockchain-powered product registration and QR code verification
+- **Role-Based Access Control**: Separate interfaces for admins, manufacturers, suppliers, and retailers  
+- **Advanced Audit Logs**: Comprehensive logging of all user activities, login attempts, and product scans with filtering and analytics
+- **Real-Time Analytics**: Interactive dashboards showing scan trends, login success rates, and activity summaries
+- **Customer Support**: Live chat system with Socket.IO integration
+- **File Management**: Product image uploads with Multer
+- **Security**: Parameterized SQL queries, input validation, and audit trails
 
 ## Tech stack & structure
 
 - Frontend: React (CRA), Tailwind CSS, MUI, Axios, Ethers.js
-- Backend: Node.js, Express, PostgreSQL, Multer
+- Backend: Node.js, Express, PostgreSQL, Multer, Socket.IO
 - Blockchain: Hardhat, Solidity
 
 Repository layout:
 
-- frontend/ – React UI
-- backend/ – Express API, file uploads, Postgres client
+- frontend/ – React UI with role-based routing
+- backend/ – Express API with audit logging, file uploads, Postgres client
 - Blockchain/ – Smart contracts, Hardhat config
-- sqldump.sql – Database schema and seed
+- sqldump.sql – Database schema with audit tables
+
+## Key Features & Pages
+
+**Admin Dashboard (`/admin`):**
+
+- Real-time KPI cards (users, products, scans, authenticity rates)
+- Weekly scan activity trends with visual progress bars
+- Recent activity feed with action icons
+- Top activities summary (7-day period)
+- Login success rate monitoring
+- Quick action buttons for common admin tasks
+
+**Audit Logs Page (`/audit-logs`):**
+
+- Advanced filtering by log type, username, time period, and specific criteria
+- Interactive analytics charts for daily scan and login trends  
+- CSV export functionality for compliance and reporting
+- Real-time data with parameterized queries for security
+- Visual indicators for authentic/counterfeit scans and login success/failure
+
+**Role-Based Pages:**
+
+- Manufacturers: Product registration with blockchain integration
+- Suppliers: Supply chain updates and product history
+- Retailers: Inventory management and customer-facing features
+- Public: QR scanner with authenticity verification
 
 ## Prerequisites
 

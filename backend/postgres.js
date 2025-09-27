@@ -498,26 +498,133 @@ app.get("/dashboard-analytics", async (req, res) => {
   }
 });
 
-// --- Logs Endpoints ---
+// --- Enhanced Logs Endpoints with Filters ---
 app.get("/login-attempts", async (req, res) => {
-  const data = await client.query(
-    "SELECT * FROM login_attempts ORDER BY attempt_time DESC LIMIT 100"
-  );
-  res.send(data.rows);
+  const limit = parseInt(req.query.limit) || 100;
+  const username = req.query.username;
+  const success = req.query.success;
+  const days = parseInt(req.query.days) || null;
+
+  let query = "SELECT * FROM login_attempts WHERE 1=1";
+  const params = [];
+  let paramIndex = 1;
+
+  if (username) {
+    query += ` AND username = $${paramIndex}`;
+    params.push(username);
+    paramIndex++;
+  }
+
+  if (success !== undefined) {
+    query += ` AND success = $${paramIndex}`;
+    params.push(success === "true");
+    paramIndex++;
+  }
+
+  if (days) {
+    query += ` AND attempt_time >= NOW() - INTERVAL '${days} days'`;
+  }
+
+  query += ` ORDER BY attempt_time DESC LIMIT $${paramIndex}`;
+  params.push(limit);
+
+  try {
+    const data = await client.query(query, params);
+    res.send(data.rows);
+  } catch (err) {
+    console.error("Error fetching login attempts:", err);
+    res.status(500).send({ message: err.message });
+  }
 });
 
 app.get("/product-scans", async (req, res) => {
-  const data = await client.query(
-    "SELECT * FROM product_scans ORDER BY scan_time DESC LIMIT 100"
-  );
-  res.send(data.rows);
+  const limit = parseInt(req.query.limit) || 100;
+  const username = req.query.username;
+  const serialNumber = req.query.serialNumber;
+  const isAuthentic = req.query.isAuthentic;
+  const isSuspicious = req.query.isSuspicious;
+  const days = parseInt(req.query.days) || null;
+
+  let query = "SELECT * FROM product_scans WHERE 1=1";
+  const params = [];
+  let paramIndex = 1;
+
+  if (username) {
+    query += ` AND username = $${paramIndex}`;
+    params.push(username);
+    paramIndex++;
+  }
+
+  if (serialNumber) {
+    query += ` AND serial_number = $${paramIndex}`;
+    params.push(serialNumber);
+    paramIndex++;
+  }
+
+  if (isAuthentic !== undefined) {
+    query += ` AND is_authentic = $${paramIndex}`;
+    params.push(isAuthentic === "true");
+    paramIndex++;
+  }
+
+  if (isSuspicious !== undefined) {
+    query += ` AND is_suspicious = $${paramIndex}`;
+    params.push(isSuspicious === "true");
+    paramIndex++;
+  }
+
+  if (days) {
+    query += ` AND scan_time >= NOW() - INTERVAL '${days} days'`;
+  }
+
+  query += ` ORDER BY scan_time DESC LIMIT $${paramIndex}`;
+  params.push(limit);
+
+  try {
+    const data = await client.query(query, params);
+    res.send(data.rows);
+  } catch (err) {
+    console.error("Error fetching product scans:", err);
+    res.status(500).send({ message: err.message });
+  }
 });
 
 app.get("/activity-logs", async (req, res) => {
-  const data = await client.query(
-    "SELECT * FROM activity_log ORDER BY log_time DESC LIMIT 100"
-  );
-  res.send(data.rows);
+  const limit = parseInt(req.query.limit) || 100;
+  const username = req.query.username;
+  const action = req.query.action;
+  const days = parseInt(req.query.days) || null;
+
+  let query = "SELECT * FROM activity_log WHERE 1=1";
+  const params = [];
+  let paramIndex = 1;
+
+  if (username) {
+    query += ` AND username = $${paramIndex}`;
+    params.push(username);
+    paramIndex++;
+  }
+
+  if (action) {
+    query += ` AND action = $${paramIndex}`;
+    params.push(action);
+    paramIndex++;
+  }
+
+  if (days) {
+    query += ` AND log_time >= NOW() - INTERVAL '${days} days'`;
+  }
+
+  query += ` ORDER BY log_time DESC LIMIT $${paramIndex}`;
+  params.push(limit);
+
+  try {
+    const data = await client.query(query, params);
+    res.send(data.rows);
+  } catch (err) {
+    console.error("Error fetching activity logs:", err);
+    res.status(500).send({ message: err.message });
+  }
 });
 
 // --- Download Logs as CSV ---
@@ -551,6 +658,104 @@ app.get("/download-logs/:type", async (req, res) => {
     return res.send(csv);
   } catch (err) {
     res.status(500).send({ message: err.message });
+  }
+});
+
+// ===== ANALYTICS AGGREGATION ENDPOINTS =====
+
+// Daily scans analytics endpoint
+app.get("/analytics/scans/daily", async (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+
+  try {
+    const data = await client.query(`
+      SELECT 
+        DATE(scan_time) as date,
+        COUNT(*) as total_scans,
+        COUNT(CASE WHEN is_authentic = true THEN 1 END) as authentic_scans,
+        COUNT(CASE WHEN is_authentic = false THEN 1 END) as counterfeit_scans,
+        COUNT(CASE WHEN is_suspicious = true THEN 1 END) as suspicious_scans
+      FROM product_scans 
+      WHERE scan_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE(scan_time)
+      ORDER BY date DESC
+      LIMIT ${days}
+    `);
+
+    res.json({
+      success: true,
+      data: data.rows,
+      period: `${days} days`,
+    });
+  } catch (err) {
+    console.error("Error fetching scan analytics:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching scan analytics",
+    });
+  }
+});
+
+// Daily login analytics endpoint
+app.get("/analytics/logins/daily", async (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+
+  try {
+    const data = await client.query(`
+      SELECT 
+        DATE(attempt_time) as date,
+        COUNT(*) as total_attempts,
+        COUNT(CASE WHEN success = true THEN 1 END) as successful_logins,
+        COUNT(CASE WHEN success = false THEN 1 END) as failed_logins,
+        COUNT(DISTINCT username) as unique_users
+      FROM login_attempts 
+      WHERE attempt_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE(attempt_time)
+      ORDER BY date DESC
+      LIMIT ${days}
+    `);
+
+    res.json({
+      success: true,
+      data: data.rows,
+      period: `${days} days`,
+    });
+  } catch (err) {
+    console.error("Error fetching login analytics:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching login analytics",
+    });
+  }
+});
+
+// Activity summary endpoint
+app.get("/analytics/activity/summary", async (req, res) => {
+  const days = parseInt(req.query.days) || 7;
+
+  try {
+    const data = await client.query(`
+      SELECT 
+        action,
+        COUNT(*) as action_count,
+        COUNT(DISTINCT username) as unique_users
+      FROM activity_log 
+      WHERE log_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY action
+      ORDER BY action_count DESC
+    `);
+
+    res.json({
+      success: true,
+      data: data.rows,
+      period: `${days} days`,
+    });
+  } catch (err) {
+    console.error("Error fetching activity summary:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching activity summary",
+    });
   }
 });
 

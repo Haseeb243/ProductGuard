@@ -7,6 +7,14 @@ import ManageAccountsIcon from "@mui/icons-material/ManageAccounts";
 import logoImg from "../../img/logo.png";
 import profilePic from "../../img/profile.jpeg";
 import { useConfig } from "../../context/ConfigContext";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+} from "recharts";
 // Real SVG icons
 const DashboardIcon = () => (
   <svg
@@ -74,6 +82,21 @@ const BellIcon = () => (
 const DownloadIcon = () => (
   <span className="inline-block w-4 h-4 bg-blue-400 rounded mr-1" />
 );
+const AuditIcon = () => (
+  <svg
+    className="w-5 h-5 mr-2"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+    />
+  </svg>
+);
 
 const SidebarLink = ({ icon, label, to, active }) => (
   <Link
@@ -89,6 +112,11 @@ const SidebarLink = ({ icon, label, to, active }) => (
 
 const SIDEBAR_LINKS = [
   { icon: <DashboardIcon />, label: "Dashboard", to: "/admin" },
+  {
+    icon: <AuditIcon />,
+    label: "Audit Logs",
+    to: "/audit-logs",
+  },
   {
     icon: <FactoryIcon />,
     label: "Manufacturers",
@@ -115,15 +143,20 @@ const Admin = () => {
   const { apiBaseUrl } = useConfig();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [analytics, setAnalytics] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [logType, setLogType] = useState("activity");
   const [loading, setLoading] = useState(true);
   const [deleteUser, setDeleteUser] = useState("");
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [dashboardAnalytics, setDashboardAnalytics] = useState({
+    scans: [],
+    logins: [],
+    activitySummary: [],
+  });
 
   useEffect(() => {
     fetchAnalytics();
-    fetchLogs();
-  }, [logType]);
+    fetchRecentActivity();
+    fetchDashboardAnalytics();
+  }, []);
 
   const fetchAnalytics = async () => {
     setLoading(true);
@@ -137,16 +170,40 @@ const Admin = () => {
     setLoading(false);
   };
 
-  const fetchLogs = async () => {
-    setLoading(true);
+  const fetchRecentActivity = async () => {
     try {
-      const res = await fetch(`${apiBaseUrl}/${logType}-logs`);
-      const data = await res.json();
-      setLogs(data);
+      const res = await fetch(`${apiBaseUrl}/activity-logs?limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setRecentActivity(data);
+      }
     } catch (e) {
-      toast.error("Failed to load logs");
+      console.error("Failed to load recent activity:", e);
     }
-    setLoading(false);
+  };
+
+  const fetchDashboardAnalytics = async () => {
+    try {
+      const [scansRes, loginsRes, activityRes] = await Promise.all([
+        fetch(`${apiBaseUrl}/analytics/scans/daily?days=7`),
+        fetch(`${apiBaseUrl}/analytics/logins/daily?days=7`),
+        fetch(`${apiBaseUrl}/analytics/activity/summary?days=7`),
+      ]);
+
+      const [scansData, loginsData, activityData] = await Promise.all([
+        scansRes.ok ? scansRes.json() : { data: [] },
+        loginsRes.ok ? loginsRes.json() : { data: [] },
+        activityRes.ok ? activityRes.json() : { data: [] },
+      ]);
+
+      setDashboardAnalytics({
+        scans: scansData.data || [],
+        logins: loginsData.data || [],
+        activitySummary: activityData.data || [],
+      });
+    } catch (e) {
+      console.error("Failed to load dashboard analytics:", e);
+    }
   };
 
   const handleDeleteUser = async () => {
@@ -165,14 +222,6 @@ const Admin = () => {
       }
     } catch (e) {
       toast.error("Failed to delete user");
-    }
-  };
-
-  const handleDownloadLogs = async () => {
-    try {
-      window.open(`${apiBaseUrl}/download-logs/${logType}`, "_blank");
-    } catch (e) {
-      toast.error("Failed to download logs");
     }
   };
 
@@ -354,109 +403,418 @@ const Admin = () => {
               </div>
             )
           )}
-          {/* Logs Table */}
-          <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl shadow-lg border border-gray-800 overflow-x-auto mt-8">
-            <table className="min-w-full">
-              <thead className="sticky top-0 bg-gray-800 bg-opacity-80">
-                <tr>
-                  {logType === "activity" && (
-                    <>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        User
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Action
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Target
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Details
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Time
-                      </th>
-                    </>
-                  )}
-                  {logType === "login" && (
-                    <>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        User
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Success
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">IP</th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Time
-                      </th>
-                    </>
-                  )}
-                  {logType === "scan" && (
-                    <>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Product
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        User
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Location
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Authentic
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-400">
-                        Time
-                      </th>
-                    </>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {logs.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="text-center text-gray-500 py-8">
-                      No logs found.
-                    </td>
-                  </tr>
-                )}
-                {logType === "activity" &&
-                  logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-800 transition">
-                      <td className="px-4 py-2">{log.username}</td>
-                      <td className="px-4 py-2">{log.action}</td>
-                      <td className="px-4 py-2">{log.target}</td>
-                      <td className="px-4 py-2">{log.details}</td>
-                      <td className="px-4 py-2">{log.log_time}</td>
-                    </tr>
+
+          {/* Pie Charts Section */}
+          {analytics && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+              {/* Scan Authenticity Pie Chart */}
+              <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
+                <h3 className="text-lg font-semibold text-white mb-4">
+                  Scan Results Distribution
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          {
+                            name: "Authentic",
+                            value: analytics.authenticScanCount || 0,
+                            color: "#10B981",
+                          },
+                          {
+                            name: "Counterfeit",
+                            value: analytics.counterfeitScanCount || 0,
+                            color: "#EF4444",
+                          },
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) =>
+                          `${name} ${(percent * 100).toFixed(0)}%`
+                        }
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        <Cell fill="#10B981" />
+                        <Cell fill="#EF4444" />
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#1F2937",
+                          border: "1px solid #374151",
+                          borderRadius: "0.5rem",
+                          color: "#F9FAFB",
+                        }}
+                      />
+                      <Legend
+                        wrapperStyle={{
+                          color: "#F9FAFB",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* User Activity Pie Chart */}
+              <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
+                <h3 className="text-lg font-semibold text-white mb-4">
+                  User Types Distribution
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={analytics.userCounts.map((user) => ({
+                          name:
+                            user.role.charAt(0).toUpperCase() +
+                            user.role.slice(1),
+                          value: parseInt(user.count || 0),
+                          color:
+                            user.role === "admin"
+                              ? "#8B5CF6"
+                              : user.role === "manufacturer"
+                              ? "#F59E0B"
+                              : user.role === "distributor"
+                              ? "#06B6D4"
+                              : "#10B981",
+                        }))}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) =>
+                          `${name} ${(percent * 100).toFixed(0)}%`
+                        }
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {analytics.userCounts.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              entry.role === "admin"
+                                ? "#8B5CF6"
+                                : entry.role === "manufacturer"
+                                ? "#F59E0B"
+                                : entry.role === "distributor"
+                                ? "#06B6D4"
+                                : "#10B981"
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#1F2937",
+                          border: "1px solid #374151",
+                          borderRadius: "0.5rem",
+                          color: "#F9FAFB",
+                        }}
+                      />
+                      <Legend
+                        wrapperStyle={{
+                          color: "#F9FAFB",
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Enhanced Dashboard Analytics */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+            {/* Weekly Scan Trends */}
+            <div className="lg:col-span-2 bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Weekly Scan Activity
+              </h3>
+              {dashboardAnalytics.scans.length > 0 ? (
+                <div className="space-y-4">
+                  {dashboardAnalytics.scans.map((day, index) => {
+                    const total = day.total_scans || 0;
+                    const authentic = day.authentic_scans || 0;
+                    const counterfeit = day.counterfeit_scans || 0;
+                    const authenticPercent =
+                      total > 0 ? (authentic / total) * 100 : 0;
+
+                    return (
+                      <div
+                        key={day.date}
+                        className="bg-gray-800 bg-opacity-50 rounded-lg p-4"
+                      >
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-white font-medium">
+                            {new Date(day.date).toLocaleDateString("en-US", {
+                              weekday: "long",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                          <span className="text-blue-400 font-bold">
+                            {total} scans
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm mb-2">
+                          <span className="text-green-400">
+                            ✓ {authentic} authentic
+                          </span>
+                          <span className="text-red-400">
+                            ✗ {counterfeit} counterfeit
+                          </span>
+                          <span className="text-purple-400">
+                            {authenticPercent.toFixed(1)}% success
+                          </span>
+                        </div>
+                        <div className="relative bg-gray-700 rounded-full h-3 overflow-hidden">
+                          <div
+                            className="absolute top-0 left-0 h-3 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${authenticPercent}%` }}
+                          />
+                          <div
+                            className="absolute top-0 right-0 h-3 bg-gradient-to-r from-red-400 to-red-600 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${100 - authenticPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-gray-500 text-5xl mb-3">📊</div>
+                  <p className="text-gray-400">No scan data available</p>
+                </div>
+              )}
+            </div>
+
+            {/* Recent Activity Panel */}
+            <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Recent Activity
+              </h3>
+              {recentActivity.length > 0 ? (
+                <div className="space-y-3">
+                  {recentActivity.map((activity, index) => (
+                    <div
+                      key={activity.id || index}
+                      className="bg-gray-800 bg-opacity-50 rounded-lg p-3"
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0">
+                          {activity.action === "add_product" && (
+                            <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">+</span>
+                            </div>
+                          )}
+                          {activity.action === "delete_user" && (
+                            <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">-</span>
+                            </div>
+                          )}
+                          {activity.action === "login" && (
+                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">👤</span>
+                            </div>
+                          )}
+                          {!["add_product", "delete_user", "login"].includes(
+                            activity.action
+                          ) && (
+                            <div className="w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">•</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">
+                            {activity.username}
+                          </p>
+                          <p className="text-gray-400 text-xs">
+                            {activity.action.replace("_", " ")} •{" "}
+                            {activity.target}
+                          </p>
+                          <p className="text-gray-500 text-xs mt-1">
+                            {new Date(activity.log_time).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                {logType === "login" &&
-                  logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-800 transition">
-                      <td className="px-4 py-2">{log.username}</td>
-                      <td className="px-4 py-2">
-                        {log.success ? "Yes" : "No"}
-                      </td>
-                      <td className="px-4 py-2">{log.ip_address}</td>
-                      <td className="px-4 py-2">{log.attempt_time}</td>
-                    </tr>
-                  ))}
-                {logType === "scan" &&
-                  logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-800 transition">
-                      <td className="px-4 py-2">{log.serial_number}</td>
-                      <td className="px-4 py-2">{log.username}</td>
-                      <td className="px-4 py-2">{log.location}</td>
-                      <td className="px-4 py-2">
-                        {log.is_authentic ? "Yes" : "No"}
-                      </td>
-                      <td className="px-4 py-2">{log.scan_time}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="text-gray-500 text-3xl mb-2">📝</div>
+                  <p className="text-gray-400 text-sm">No recent activity</p>
+                </div>
+              )}
+              <div className="mt-4 pt-4 border-t border-gray-700">
+                <Link
+                  to="/audit-logs"
+                  className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+                >
+                  View all logs →
+                </Link>
+              </div>
+            </div>
           </div>
+
+          {/* Activity Summary & Login Trends */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            {/* Activity Summary */}
+            <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Top Activities (7 days)
+              </h3>
+              {dashboardAnalytics.activitySummary.length > 0 ? (
+                <div className="space-y-3">
+                  {dashboardAnalytics.activitySummary
+                    .slice(0, 5)
+                    .map((activity, index) => (
+                      <div
+                        key={activity.action}
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div
+                            className={`w-3 h-3 rounded-full ${
+                              index === 0
+                                ? "bg-yellow-400"
+                                : index === 1
+                                ? "bg-green-400"
+                                : index === 2
+                                ? "bg-blue-400"
+                                : "bg-gray-400"
+                            }`}
+                          />
+                          <span className="text-white text-sm capitalize">
+                            {activity.action.replace("_", " ")}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-400 text-sm">
+                            {activity.action_count} times
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            ({activity.unique_users} users)
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-center py-8">
+                  No activity data available
+                </p>
+              )}
+            </div>
+
+            {/* Login Success Rate */}
+            <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                Login Success Rate (7 days)
+              </h3>
+              {dashboardAnalytics.logins.length > 0 ? (
+                <div className="space-y-4">
+                  {dashboardAnalytics.logins.map((day) => {
+                    const total = day.total_attempts || 0;
+                    const successful = day.successful_logins || 0;
+                    const successRate =
+                      total > 0 ? (successful / total) * 100 : 0;
+
+                    return (
+                      <div
+                        key={day.date}
+                        className="bg-gray-800 bg-opacity-50 rounded-lg p-3"
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-gray-300 text-sm">
+                            {new Date(day.date).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                          <span
+                            className={`text-sm font-medium ${
+                              successRate > 90
+                                ? "text-green-400"
+                                : successRate > 70
+                                ? "text-yellow-400"
+                                : "text-red-400"
+                            }`}
+                          >
+                            {successRate.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-xs text-gray-400 mb-2">
+                          <span>{successful} successful</span>
+                          <span>{total - successful} failed</span>
+                        </div>
+                        <div className="bg-gray-700 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-500 ${
+                              successRate > 90
+                                ? "bg-green-400"
+                                : successRate > 70
+                                ? "bg-yellow-400"
+                                : "bg-red-400"
+                            }`}
+                            style={{ width: `${successRate}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-gray-400 text-center py-8">
+                  No login data available
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Actions Panel */}
+          <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800 mt-6">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Quick Actions
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Link
+                to="/audit-logs"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg flex items-center justify-center space-x-2 transition-colors"
+              >
+                <AuditIcon />
+                <span>View Audit Logs</span>
+              </Link>
+              <Link
+                to="/add-account"
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>➕</span>
+                <span>Add Account</span>
+              </Link>
+              <Link
+                to="/manage-account"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-lg flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>👥</span>
+                <span>Manage Users</span>
+              </Link>
+              <Link
+                to="/support-dashboard"
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-lg flex items-center justify-center space-x-2 transition-colors"
+              >
+                <span>💬</span>
+                <span>Support</span>
+              </Link>
+            </div>
+          </div>
+
           <Toaster
             position="top-right"
             toastOptions={{ className: "bg-gray-800 text-white" }}
