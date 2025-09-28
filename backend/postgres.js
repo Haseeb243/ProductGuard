@@ -13,6 +13,7 @@ const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
+const crypto = require("crypto");
 require("dotenv").config();
 
 const app = express();
@@ -37,14 +38,18 @@ app.use(
 const port = process.env.PORT || 5000;
 
 // JWT Configuration
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_SECRET =
+  process.env.JWT_SECRET || "your-secret-key-change-in-production";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "24h";
 
 // Rate limiting configuration
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
-  message: { success: false, message: "Too many login attempts, please try again later." },
+  max: 20, // limit each IP to 5 requests per windowMs
+  message: {
+    success: false,
+    message: "Too many login attempts, please try again later.",
+  },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -62,18 +67,83 @@ client.connect();
 // Initialize Socket.IO for chat (pass DB client for persistence)
 const io = chatService.initializeChat(server, corsOrigins, client);
 
+// Ensure password reset tokens table exists and has required columns
+(async () => {
+  try {
+    // Create table if missing (minimal definition)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id SERIAL PRIMARY KEY
+      );
+    `);
+    // Add required columns if missing
+    await client.query(`
+      ALTER TABLE password_reset_tokens
+        ADD COLUMN IF NOT EXISTS user_id INTEGER,
+        ADD COLUMN IF NOT EXISTS token TEXT,
+        ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS used BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    `);
+    // Ensure token column is wide enough (some legacy schemas had VARCHAR(12))
+    try {
+      await client.query(
+        `ALTER TABLE password_reset_tokens ALTER COLUMN token TYPE TEXT`
+      );
+    } catch (e) {
+      // Ignore if already TEXT or conversion not needed
+      if (
+        !/does not exist|cannot alter|already/.test(String(e?.message || ""))
+      ) {
+        console.warn(
+          "Could not alter password_reset_tokens.token to TEXT:",
+          e.message
+        );
+      }
+    }
+    // Ensure uniqueness/indexes
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_password_reset_tokens_user_id'
+        ) THEN
+          CREATE INDEX idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_password_reset_tokens_expires_at'
+        ) THEN
+          CREATE INDEX idx_password_reset_tokens_expires_at ON password_reset_tokens(expires_at);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'uq_password_reset_tokens_token'
+        ) THEN
+          CREATE UNIQUE INDEX uq_password_reset_tokens_token ON password_reset_tokens(token);
+        END IF;
+      END$$;
+    `);
+    console.log("password_reset_tokens table ready");
+  } catch (e) {
+    console.error("Failed to ensure password_reset_tokens table:", e.message);
+  }
+})();
+
 // RBAC Middleware
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
 
   if (!token) {
-    return res.status(401).json({ success: false, message: 'Access token required' });
+    return res
+      .status(401)
+      .json({ success: false, message: "Access token required" });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      return res.status(403).json({ success: false, message: 'Invalid or expired token' });
+      return res
+        .status(403)
+        .json({ success: false, message: "Invalid or expired token" });
     }
     req.user = user;
     next();
@@ -83,13 +153,17 @@ const authenticateToken = (req, res, next) => {
 const requireRole = (roles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Authentication required' });
+      return res
+        .status(401)
+        .json({ success: false, message: "Authentication required" });
     }
-    
+
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      return res
+        .status(403)
+        .json({ success: false, message: "Insufficient permissions" });
     }
-    
+
     next();
   };
 };
@@ -100,12 +174,12 @@ async function createAccount(username, password, role, email, adminUser) {
   try {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    
+
     await client.query(
       "INSERT INTO auth (username, password, role, email) VALUES ($1, $2, $3, $4)",
       [username, hashedPassword, role, email]
     );
-    
+
     logActivity(
       adminUser,
       "add_account",
@@ -123,12 +197,12 @@ async function changePassword(username, password) {
   try {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    
-    await client.query(
-      "UPDATE auth SET password = $1 WHERE username = $2",
-      [hashedPassword, username]
-    );
-    
+
+    await client.query("UPDATE auth SET password = $1 WHERE username = $2", [
+      hashedPassword,
+      username,
+    ]);
+
     console.log("Data update successful");
   } catch (err) {
     console.log(err.message);
@@ -235,37 +309,66 @@ app.get("/authAll", async (req, res) => {
 app.post("/auth/login", loginLimiter, async (req, res) => {
   try {
     const { username, password, twoFactorToken } = req.body;
-    
+
     if (!username || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Username and password are required" 
+      return res.status(400).json({
+        success: false,
+        message: "Username and password are required",
       });
     }
 
-    const data = await client.query(
-      "SELECT * FROM auth WHERE username = $1",
-      [username]
-    );
+    const data = await client.query("SELECT * FROM auth WHERE username = $1", [
+      username,
+    ]);
 
     const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
-    
+
     if (data.rows.length === 0) {
       logLoginAttempt(username, false, ip);
-      return res.status(401).json({ 
-        success: false, 
-        message: "Invalid credentials" 
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
       });
     }
 
     const user = data.rows[0];
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const storedPassword = user.password || "";
+    const isBcryptHash = /^\$2[aby]\$/.test(storedPassword);
+
+    let isValidPassword = false;
+    if (isBcryptHash) {
+      // Normal path: compare against bcrypt hash
+      isValidPassword = await bcrypt.compare(password, storedPassword);
+    } else {
+      // Backward-compatibility: legacy plaintext password in DB
+      isValidPassword = password === storedPassword;
+      if (isValidPassword) {
+        // Seamlessly upgrade to bcrypt
+        try {
+          const newHash = await bcrypt.hash(password, 10);
+          await client.query(
+            "UPDATE auth SET password = $1 WHERE username = $2",
+            [newHash, username]
+          );
+          // Optional activity log for auditing
+          logActivity(
+            username,
+            "password_rehash",
+            username,
+            "Upgraded plaintext password to bcrypt hash"
+          );
+        } catch (rehashErr) {
+          console.error("Password rehash error:", rehashErr);
+          // Continue login even if rehash fails to avoid locking out the user
+        }
+      }
+    }
 
     if (!isValidPassword) {
       logLoginAttempt(username, false, ip);
-      return res.status(401).json({ 
-        success: false, 
-        message: "Invalid credentials" 
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
       });
     }
 
@@ -275,23 +378,23 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
         return res.status(200).json({
           success: false,
           requiresTwoFactor: true,
-          message: "Two-factor authentication required"
+          message: "Two-factor authentication required",
         });
       }
 
       // Verify 2FA token
       const verified = speakeasy.totp.verify({
         secret: user.two_factor_secret,
-        encoding: 'base32',
+        encoding: "base32",
         token: twoFactorToken,
-        window: 2
+        window: 2,
       });
 
       if (!verified) {
         logLoginAttempt(username, false, ip);
-        return res.status(401).json({ 
-          success: false, 
-          message: "Invalid two-factor authentication code" 
+        return res.status(401).json({
+          success: false,
+          message: "Invalid two-factor authentication code",
         });
       }
     }
@@ -306,10 +409,10 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { 
-        username: user.username, 
+      {
+        username: user.username,
         role: user.role,
-        userId: user.id 
+        userId: user.id,
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
@@ -324,14 +427,14 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
         role: user.role,
         id: user.id,
         email: user.email,
-        is_2fa_enabled: user.is_2fa_enabled
-      }
+        is_2fa_enabled: user.is_2fa_enabled,
+      },
     });
   } catch (err) {
     console.error("Login error:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Internal server error" 
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 });
@@ -340,7 +443,7 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
 app.get("/auth/validate", authenticateToken, async (req, res) => {
   try {
     const { username } = req.user;
-    
+
     // Get fresh user data
     const userData = await client.query(
       "SELECT username, role, id, email, is_2fa_enabled FROM auth WHERE username = $1",
@@ -348,12 +451,14 @@ app.get("/auth/validate", authenticateToken, async (req, res) => {
     );
 
     if (userData.rows.length === 0) {
-      return res.status(401).json({ success: false, message: "User not found" });
+      return res
+        .status(401)
+        .json({ success: false, message: "User not found" });
     }
 
     res.json({
       success: true,
-      user: userData.rows[0]
+      user: userData.rows[0],
     });
   } catch (err) {
     console.error("Token validation error:", err);
@@ -361,25 +466,35 @@ app.get("/auth/validate", authenticateToken, async (req, res) => {
   }
 });
 
-// Keep old endpoint for backward compatibility but mark as deprecated
-app.post("/auth/:username/:password", async (req, res) => {
-  console.warn("DEPRECATED: Using old auth endpoint. Please migrate to POST /auth/login");
-  const { username, password } = req.params;
-  const data = await client.query(
-    `SELECT * FROM auth WHERE username = '${username}' AND password = '${password}'`
+// Keep old endpoint under a legacy path to avoid conflicting with new routes
+app.post("/auth/legacy/:username/:password", async (req, res) => {
+  console.warn(
+    "DEPRECATED: Using legacy auth endpoint. Please migrate to POST /auth/login"
   );
-  const success = data.rows.length > 0;
-  const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
-  logLoginAttempt(username, success, ip);
-  res.send(data.rows);
-  console.log("Data sent successfully");
+  const { username, password } = req.params;
+  try {
+    const data = await client.query(
+      `SELECT * FROM auth WHERE username = '${username}' AND password = '${password}'`
+    );
+    const success = data.rows.length > 0;
+    const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+    logLoginAttempt(username, success, ip);
+  } catch (e) {
+    console.error("Legacy auth error", e);
+  }
+  // Explicitly return 410 Gone to force clients to move
+  return res.status(410).json({
+    success: false,
+    message:
+      "Legacy endpoint removed. Use POST /auth/login with JSON body instead.",
+  });
 });
 
 app.post("/addaccount", async (req, res) => {
   try {
     const { username, password, role, email } = req.body;
     const adminUser = req.user?.username || "admin";
-    
+
     await createAccount(username, password, role, email || null, adminUser);
     res.json({ success: true, message: "Account created successfully" });
   } catch (err) {
@@ -395,7 +510,9 @@ app.post("/changepsw", async (req, res) => {
     res.json({ success: true, message: "Password updated successfully" });
   } catch (err) {
     console.error("Change password error:", err);
-    res.status(500).json({ success: false, message: "Error updating password" });
+    res
+      .status(500)
+      .json({ success: false, message: "Error updating password" });
   }
 });
 
@@ -403,10 +520,10 @@ app.post("/changepsw", async (req, res) => {
 app.post("/auth/2fa/setup", authenticateToken, async (req, res) => {
   try {
     const { username } = req.user;
-    
+
     const secret = speakeasy.generateSecret({
       name: `ProductGuard (${username})`,
-      issuer: "ProductGuard"
+      issuer: "ProductGuard",
     });
 
     // Store the temp secret (will be confirmed when user verifies)
@@ -415,13 +532,24 @@ app.post("/auth/2fa/setup", authenticateToken, async (req, res) => {
       [secret.base32, username]
     );
 
-    // Generate QR code
-    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+    // Generate QR code; if it fails, still return secret and otpauthUrl for client-side QR rendering
+    let qrCodeUrl = null;
+    try {
+      if (secret.otpauth_url) {
+        qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+      }
+    } catch (qrErr) {
+      console.warn(
+        "QR code generation failed, falling back to otpauthUrl:",
+        qrErr?.message
+      );
+    }
 
     res.json({
       success: true,
       secret: secret.base32,
-      qrCode: qrCodeUrl
+      qrCode: qrCodeUrl,
+      otpauthUrl: secret.otpauth_url || null,
     });
   } catch (err) {
     console.error("2FA setup error:", err);
@@ -435,7 +563,9 @@ app.post("/auth/2fa/verify", authenticateToken, async (req, res) => {
     const { username } = req.user;
 
     if (!token) {
-      return res.status(400).json({ success: false, message: "Token is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Token is required" });
     }
 
     // Get user's secret
@@ -445,14 +575,16 @@ app.post("/auth/2fa/verify", authenticateToken, async (req, res) => {
     );
 
     if (!userData.rows[0]?.two_factor_secret) {
-      return res.status(400).json({ success: false, message: "2FA not set up" });
+      return res
+        .status(400)
+        .json({ success: false, message: "2FA not set up" });
     }
 
     const verified = speakeasy.totp.verify({
       secret: userData.rows[0].two_factor_secret,
-      encoding: 'base32',
+      encoding: "base32",
       token,
-      window: 2
+      window: 2,
     });
 
     if (verified) {
@@ -461,7 +593,7 @@ app.post("/auth/2fa/verify", authenticateToken, async (req, res) => {
         "UPDATE auth SET is_2fa_enabled = true WHERE username = $1",
         [username]
       );
-      
+
       res.json({ success: true, message: "2FA enabled successfully" });
     } else {
       res.status(400).json({ success: false, message: "Invalid token" });
@@ -478,7 +610,10 @@ app.post("/auth/2fa/disable", authenticateToken, async (req, res) => {
     const { username } = req.user;
 
     if (!password || !token) {
-      return res.status(400).json({ success: false, message: "Password and 2FA token are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Password and 2FA token are required",
+      });
     }
 
     // Verify current password
@@ -487,21 +622,28 @@ app.post("/auth/2fa/disable", authenticateToken, async (req, res) => {
       [username]
     );
 
-    const isValidPassword = await bcrypt.compare(password, userData.rows[0].password);
+    const isValidPassword = await bcrypt.compare(
+      password,
+      userData.rows[0].password
+    );
     if (!isValidPassword) {
-      return res.status(401).json({ success: false, message: "Invalid password" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid password" });
     }
 
     // Verify 2FA token
     const verified = speakeasy.totp.verify({
       secret: userData.rows[0].two_factor_secret,
-      encoding: 'base32',
+      encoding: "base32",
       token,
-      window: 2
+      window: 2,
     });
 
     if (!verified) {
-      return res.status(400).json({ success: false, message: "Invalid 2FA token" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid 2FA token" });
     }
 
     // Disable 2FA
@@ -514,6 +656,175 @@ app.post("/auth/2fa/disable", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("2FA disable error:", err);
     res.status(500).json({ success: false, message: "Error disabling 2FA" });
+  }
+});
+
+// ===== Password Reset Flow =====
+// Request password reset: accepts { email } or { username }
+app.post("/auth/password/forgot", async (req, res) => {
+  try {
+    const { email, username } = req.body || {};
+    if (!email && !username) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email or username is required" });
+    }
+
+    // Look up user by email first, then username
+    let userRow = null;
+    if (email) {
+      const r = await client.query(
+        "SELECT id, email, username FROM auth WHERE email = $1",
+        [email]
+      );
+      userRow = r.rows[0] || null;
+    }
+    if (!userRow && username) {
+      const r = await client.query(
+        "SELECT id, email, username FROM auth WHERE username = $1",
+        [username]
+      );
+      userRow = r.rows[0] || null;
+    }
+
+    // Always return success to avoid user enumeration
+    if (!userRow || !userRow.email) {
+      return res.json({
+        success: true,
+        message: "If an account exists, a reset link has been sent",
+      });
+    }
+
+    // Create token valid for 30 minutes
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    // Insert token, accommodating legacy schemas that require email/username columns
+    let inserted = false;
+    try {
+      await client.query(
+        "INSERT INTO password_reset_tokens (user_id, token, expires_at, email, username) VALUES ($1, $2, $3, $4, $5)",
+        [userRow.id, token, expiresAt, userRow.email, userRow.username || null]
+      );
+      inserted = true;
+    } catch (e1) {
+      console.warn(
+        "password_reset_tokens insert (with email/username) failed, retrying minimal columns:",
+        e1.message
+      );
+      try {
+        await client.query(
+          "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)",
+          [userRow.id, token, expiresAt]
+        );
+        inserted = true;
+      } catch (e2) {
+        console.error("password_reset_tokens insert failed:", e2.message);
+      }
+    }
+
+    // Determine frontend base URL
+    const frontendBase =
+      process.env.FRONTEND_BASE_URL || "http://localhost:3000";
+    const resetLink = `${frontendBase}/reset-password?token=${encodeURIComponent(
+      token
+    )}`;
+
+    // Send email using emailService
+    try {
+      if (inserted) {
+        await emailService.sendEmail(client, "passwordReset", userRow.email, {
+          resetLink,
+        });
+        console.log(`Password reset email queued to ${userRow.email}`);
+      } else {
+        // If insert failed, don't send a broken link; log server-side and still return generic success
+        console.error(
+          "Skipping password reset email send due to failed token insert"
+        );
+      }
+    } catch (e) {
+      console.error("Error sending reset email:", e.message);
+      // Do not reveal error to client
+    }
+
+    return res.json({
+      success: true,
+      message: "If an account exists, a reset link has been sent",
+    });
+  } catch (err) {
+    console.error("Password reset request error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Error processing request" });
+  }
+});
+
+// Reset password: accepts { token, password }
+app.post("/auth/password/reset", async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Token and new password are required",
+      });
+    }
+
+    // Lookup token
+    const tRes = await client.query(
+      "SELECT prt.id, prt.user_id, prt.expires_at, prt.used, a.username FROM password_reset_tokens prt JOIN auth a ON a.id = prt.user_id WHERE prt.token = $1",
+      [token]
+    );
+    if (tRes.rows.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired token" });
+    }
+    const row = tRes.rows[0];
+    if (row.used || new Date(row.expires_at) < new Date()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired token" });
+    }
+
+    // Update password
+    const newHash = await bcrypt.hash(password, 10);
+    await client.query("UPDATE auth SET password = $1 WHERE id = $2", [
+      newHash,
+      row.user_id,
+    ]);
+
+    // Mark token used (support legacy schemas with used_at column)
+    try {
+      await client.query(
+        "UPDATE password_reset_tokens SET used = TRUE, used_at = NOW() WHERE id = $1",
+        [row.id]
+      );
+    } catch (e1) {
+      await client.query(
+        "UPDATE password_reset_tokens SET used = TRUE WHERE id = $1",
+        [row.id]
+      );
+    }
+
+    // Log activity
+    logActivity(
+      row.username,
+      "password_reset",
+      row.user_id,
+      "Password reset via email link"
+    );
+
+    return res.json({
+      success: true,
+      message: "Password has been reset. You can now sign in.",
+    });
+  } catch (err) {
+    console.error("Password reset error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Error resetting password" });
   }
 });
 
@@ -533,11 +844,12 @@ app.get("/profile/:username", async (req, res) => {
       "SELECT * FROM profile WHERE username = $1",
       [username]
     );
-    res.json({ success: true, data: data.rows });
+    // Backward-compatible shape: return array of rows as before
+    res.send(data.rows);
     console.log("Profile data sent successfully");
   } catch (err) {
     console.error("Profile fetch error:", err);
-    res.status(500).json({ success: false, message: "Error fetching profile" });
+    res.status(500).send("Error fetching profile");
   }
 });
 

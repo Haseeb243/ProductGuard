@@ -305,7 +305,7 @@ Authorization: Bearer <jwt-token>
 #### Backend Migration
 
 1. **Existing passwords**: The system maintains backward compatibility with the old endpoint but it's deprecated
-2. **Password rehashing**: When users login with old passwords, they should be prompted to change their password to trigger rehashing
+2. **Password rehashing**: When users login with old plaintext passwords, the backend will automatically detect the legacy format, accept the login once, and immediately upgrade the stored password to a bcrypt hash (no user action required). This is logged as an `activity_log` entry with action `password_rehash`.
 3. **Database**: No schema changes required
 
 #### Frontend Migration

@@ -14,6 +14,8 @@ import ManageAccount from "./components/pages/ManageAccount";
 import AddProduct from "./components/pages/AddProduct";
 import Profile from "./components/pages/Profile";
 import TwoFactorAuth from "./components/pages/TwoFactorAuth";
+import ForgotPassword from "./components/pages/ForgotPassword";
+import ResetPassword from "./components/pages/ResetPassword";
 import UpdateProduct from "./components/pages/UpdateProduct";
 import Product from "./components/pages/Product";
 import AuthenticProduct from "./components/pages/AuthenticProduct";
@@ -62,7 +64,6 @@ function App() {
           }
         >
           <Route exact path="/profile" element={<Profile />}></Route>
-          <Route exact path="/2fa-settings" element={<TwoFactorAuth />}></Route>
           <Route
             exact
             path="/update-product"
@@ -74,6 +75,25 @@ function App() {
             element={<UpdateProductDetails />}
           ></Route>
         </Route>
+
+        {/* 2FA settings accessible by all authenticated roles */}
+        <Route
+          element={
+            <RequireAuth
+              allowedRoles={["admin", "manufacturer", "supplier", "retailer"]}
+            />
+          }
+        >
+          <Route exact path="/2fa-settings" element={<TwoFactorAuth />}></Route>
+        </Route>
+
+        {/* Publicly reachable pages for password reset flow */}
+        <Route
+          exact
+          path="/forgot-password"
+          element={<ForgotPassword />}
+        ></Route>
+        <Route exact path="/reset-password" element={<ResetPassword />}></Route>
 
         <Route
           element={<RequireAuth allowedRoles={["supplier", "retailer"]} />}

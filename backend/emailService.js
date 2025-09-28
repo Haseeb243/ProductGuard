@@ -105,6 +105,41 @@ ProductGuard Security Team
       return { text, html };
     },
   },
+  passwordReset: {
+    subject: "Reset your ProductGuard password",
+    template: (data) => {
+      const resetLink = data.resetLink;
+      const text = `
+You requested to reset your ProductGuard password.
+
+Click the link below to choose a new password (valid for 30 minutes):
+${resetLink}
+
+If you didn't request this, you can safely ignore this email.
+
+Best regards,
+ProductGuard Team
+      `.trim();
+      const html = `
+<div style="font-family:Arial,sans-serif;line-height:1.5;">
+  <p>You requested to reset your <strong>ProductGuard</strong> password.</p>
+  <p>
+    Click the button below to choose a new password (valid for 30 minutes):
+  </p>
+  <p>
+    <a href="${resetLink}"
+       style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
+      Reset Password
+    </a>
+  </p>
+  <p>If the button doesn't work, copy and paste this link into your browser:</p>
+  <p><a href="${resetLink}">${resetLink}</a></p>
+  <p>Best regards,<br/>ProductGuard Team</p>
+</div>
+      `.trim();
+      return { text, html };
+    },
+  },
 };
 
 // Log email to database
@@ -232,6 +267,8 @@ module.exports = {
   sendEmail,
   sendProductRegistrationEmail,
   sendSuspiciousScanEmail,
+  // direct
+  transporter,
   testEmailConfiguration,
   logNotification,
 };

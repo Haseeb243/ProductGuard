@@ -169,13 +169,14 @@ const AddProduct = () => {
     });
   };
 
-  const getUsername = async (e) => {
-    const res = await axios
-      .get(`${apiBaseUrl}/profile/${auth.user}`)
-      .then((res) => {
-        console.log(JSON.stringify(res?.data[0]));
-        setManuName(res?.data[0].name);
-      });
+  const getUsername = async () => {
+    try {
+      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
+      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
+      if (row?.name) setManuName(row.name);
+    } catch (e) {
+      console.error("Failed to fetch manufacturer profile:", e);
+    }
   };
 
   // to upload image

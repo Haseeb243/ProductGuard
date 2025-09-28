@@ -46,20 +46,20 @@ export default function Login() {
         setErrMsg("");
       } else if (res.data.success) {
         const { token, user: userData } = res.data;
-        
+
         // Store token in localStorage and set axios default header
-        localStorage.setItem('authToken', token);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        setAuth({ 
-          user: userData.username, 
-          role: userData.role, 
+        localStorage.setItem("authToken", token);
+        axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+        setAuth({
+          user: userData.username,
+          role: userData.role,
           token,
           userId: userData.id,
           email: userData.email,
-          is2FAEnabled: userData.is_2fa_enabled
+          is2FAEnabled: userData.is_2fa_enabled,
         });
-        
+
         setUser("");
         setPwd("");
         setTwoFactorToken("");
@@ -166,7 +166,11 @@ export default function Login() {
                     maxLength="6"
                     className="mt-1 block w-full rounded-lg border border-gray-700 bg-gray-800 text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 px-4 py-2 text-center text-2xl tracking-widest"
                     value={twoFactorToken}
-                    onChange={(e) => setTwoFactorToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(e) =>
+                      setTwoFactorToken(
+                        e.target.value.replace(/\D/g, "").slice(0, 6)
+                      )
+                    }
                     placeholder="000000"
                     autoComplete="one-time-code"
                   />
@@ -218,6 +222,17 @@ export default function Login() {
                 >
                   Back to Login
                 </button>
+              )}
+              {!showTwoFactor && (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => navigate("/forgot-password")}
+                    className="text-sm text-blue-400 hover:text-blue-300 underline"
+                  >
+                    Forgot your password?
+                  </button>
+                </div>
               )}
               <div className="flex justify-center">
                 <button
