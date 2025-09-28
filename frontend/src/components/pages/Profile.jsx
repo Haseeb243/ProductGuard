@@ -25,18 +25,24 @@ const Profile = () => {
     navigate(-1);
   };
 
-  const handleData = async (e) => {
-    const res = await axios
-      .get(`${apiBaseUrl}/profile/${auth.user}`)
-      .then((res) => {
-        console.log(JSON.stringify(res?.data[0]));
-        setName(res?.data[0].name);
-        setDescription(res?.data[0].description);
-        setRole(res.data[0].role);
-        setWebsite(res?.data[0].website);
-        setLocation(res?.data[0].location);
-        setImage(res.data.image);
-      });
+  const handleData = async () => {
+    try {
+      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
+      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
+      if (!row) {
+        console.warn("No profile found for user", auth.user, res?.data);
+        return;
+      }
+      setName(row.name || "");
+      setDescription(row.description || "");
+      setRole(row.role || "");
+      setWebsite(row.website || "");
+      setLocation(row.location || "");
+      // image handling: if your API returns image filename under row.image
+      setImage((prev) => ({ ...prev, filepreview: row.image || null }));
+    } catch (e) {
+      console.error("Failed to load profile:", e);
+    }
   };
 
   useEffect(() => {
@@ -162,6 +168,35 @@ const Profile = () => {
               >
                 <b>Location:</b>{" "}
                 {location || <span style={{ color: "#789" }}>No location</span>}
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ color: "#e0e7ef", mb: 2, fontWeight: 500 }}
+              >
+                <b>Two-Factor Authentication:</b>{" "}
+                <span
+                  style={{
+                    color: auth.is2FAEnabled ? "#10b981" : "#f59e0b",
+                    fontWeight: 600,
+                  }}
+                >
+                  {auth.is2FAEnabled ? "Enabled ✓" : "Disabled"}
+                </span>
+                <Button
+                  onClick={() => navigate("/2fa-settings")}
+                  size="small"
+                  sx={{
+                    ml: 2,
+                    color: "#38bdf8",
+                    textTransform: "none",
+                    fontSize: "0.875rem",
+                    "&:hover": {
+                      backgroundColor: "rgba(56, 189, 248, 0.1)",
+                    },
+                  }}
+                >
+                  Manage
+                </Button>
               </Typography>
             </Box>
             <Button

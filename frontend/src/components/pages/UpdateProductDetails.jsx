@@ -94,11 +94,13 @@ const UpdateProductDetails = () => {
   };
 
   const getUsername = async () => {
-    const res = await axios
-      .get(`${apiBaseUrl}/profile/${auth.user}`)
-      .then((res) => {
-        setCurrName(res?.data[0].name);
-      });
+    try {
+      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
+      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
+      if (row?.name) setCurrName(row.name);
+    } catch (e) {
+      console.error("Failed to fetch profile for update:", e);
+    }
   };
 
   const updateProduct = async (e) => {

@@ -137,6 +137,11 @@ const SIDEBAR_LINKS = [
     label: "Support",
     to: "/support-dashboard",
   },
+  {
+    icon: <DashboardIcon />,
+    label: "2FA Settings",
+    to: "/2fa-settings",
+  },
 ];
 
 const Admin = () => {

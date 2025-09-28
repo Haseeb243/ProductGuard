@@ -131,6 +131,7 @@ const SIDEBAR_LINKS = [
     to: "/manage-account?role=retailer",
   },
   { icon: <DashboardIcon />, label: "Support", to: "/support-dashboard" },
+  { icon: <DashboardIcon />, label: "2FA Settings", to: "/2fa-settings" },
 ];
 
 const SupportDashboard = () => {
