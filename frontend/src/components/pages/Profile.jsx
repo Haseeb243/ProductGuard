@@ -163,6 +163,33 @@ const Profile = () => {
                 <b>Location:</b>{" "}
                 {location || <span style={{ color: "#789" }}>No location</span>}
               </Typography>
+              <Typography
+                variant="body1"
+                sx={{ color: "#e0e7ef", mb: 2, fontWeight: 500 }}
+              >
+                <b>Two-Factor Authentication:</b>{" "}
+                <span style={{ 
+                  color: auth.is2FAEnabled ? "#10b981" : "#f59e0b",
+                  fontWeight: 600
+                }}>
+                  {auth.is2FAEnabled ? "Enabled ✓" : "Disabled"}
+                </span>
+                <Button
+                  onClick={() => navigate('/2fa-settings')}
+                  size="small"
+                  sx={{
+                    ml: 2,
+                    color: "#38bdf8",
+                    textTransform: "none",
+                    fontSize: "0.875rem",
+                    "&:hover": {
+                      backgroundColor: "rgba(56, 189, 248, 0.1)"
+                    }
+                  }}
+                >
+                  Manage
+                </Button>
+              </Typography>
             </Box>
             <Button
               onClick={handleBack}

@@ -8,6 +8,11 @@ const { Parser } = require("json2csv");
 const emailService = require("./emailService");
 const chatService = require("./chatService");
 const http = require("http");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const rateLimit = require("express-rate-limit");
+const speakeasy = require("speakeasy");
+const QRCode = require("qrcode");
 require("dotenv").config();
 
 const app = express();
@@ -31,6 +36,19 @@ app.use(
 
 const port = process.env.PORT || 5000;
 
+// JWT Configuration
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "24h";
+
+// Rate limiting configuration
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: { success: false, message: "Too many login attempts, please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const client = new Client({
   host: process.env.PGHOST || "localhost",
   user: process.env.PGUSER || "postgres",
@@ -44,40 +62,78 @@ client.connect();
 // Initialize Socket.IO for chat (pass DB client for persistence)
 const io = chatService.initializeChat(server, corsOrigins, client);
 
+// RBAC Middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ success: false, message: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+const requireRole = (roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+    }
+    
+    next();
+  };
+};
+
 // auth
 
-function createAccount(username, password, role, email, adminUser) {
-  client.query(
-    "INSERT INTO auth (username, password, role, email) VALUES ($1, $2, $3, $4)",
-    [username, password, role, email],
-    (err, res) => {
-      if (err) {
-        console.log(err.message);
-      } else {
-        logActivity(
-          adminUser,
-          "add_account",
-          username,
-          `Added account with role ${role}`
-        );
-        console.log("Data insert successful");
-      }
-    }
-  );
+async function createAccount(username, password, role, email, adminUser) {
+  try {
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    
+    await client.query(
+      "INSERT INTO auth (username, password, role, email) VALUES ($1, $2, $3, $4)",
+      [username, hashedPassword, role, email]
+    );
+    
+    logActivity(
+      adminUser,
+      "add_account",
+      username,
+      `Added account with role ${role}`
+    );
+    console.log("Data insert successful");
+  } catch (err) {
+    console.log(err.message);
+    throw err;
+  }
 }
 
-function changePassword(username, password) {
-  const res = client.query(
-    "UPDATE auth SET password = $1 WHERE username = $2",
-    [password, username],
-    (err, res) => {
-      if (err) {
-        console.log(err.message);
-      } else {
-        console.log("Data update successful");
-      }
-    }
-  );
+async function changePassword(username, password) {
+  try {
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    
+    await client.query(
+      "UPDATE auth SET password = $1 WHERE username = $2",
+      [hashedPassword, username]
+    );
+    
+    console.log("Data update successful");
+  } catch (err) {
+    console.log(err.message);
+    throw err;
+  }
 }
 
 // profile
@@ -175,7 +231,139 @@ app.get("/authAll", async (req, res) => {
   console.log("Data sent successfully");
 });
 
+// New secure login endpoint
+app.post("/auth/login", loginLimiter, async (req, res) => {
+  try {
+    const { username, password, twoFactorToken } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Username and password are required" 
+      });
+    }
+
+    const data = await client.query(
+      "SELECT * FROM auth WHERE username = $1",
+      [username]
+    );
+
+    const ip = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
+    
+    if (data.rows.length === 0) {
+      logLoginAttempt(username, false, ip);
+      return res.status(401).json({ 
+        success: false, 
+        message: "Invalid credentials" 
+      });
+    }
+
+    const user = data.rows[0];
+    const isValidPassword = await bcrypt.compare(password, user.password);
+
+    if (!isValidPassword) {
+      logLoginAttempt(username, false, ip);
+      return res.status(401).json({ 
+        success: false, 
+        message: "Invalid credentials" 
+      });
+    }
+
+    // Check if 2FA is enabled
+    if (user.is_2fa_enabled) {
+      if (!twoFactorToken) {
+        return res.status(200).json({
+          success: false,
+          requiresTwoFactor: true,
+          message: "Two-factor authentication required"
+        });
+      }
+
+      // Verify 2FA token
+      const verified = speakeasy.totp.verify({
+        secret: user.two_factor_secret,
+        encoding: 'base32',
+        token: twoFactorToken,
+        window: 2
+      });
+
+      if (!verified) {
+        logLoginAttempt(username, false, ip);
+        return res.status(401).json({ 
+          success: false, 
+          message: "Invalid two-factor authentication code" 
+        });
+      }
+    }
+
+    // Update last login
+    await client.query(
+      "UPDATE auth SET last_login = NOW() WHERE username = $1",
+      [username]
+    );
+
+    logLoginAttempt(username, true, ip);
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        username: user.username, 
+        role: user.role,
+        userId: user.id 
+      },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        username: user.username,
+        role: user.role,
+        id: user.id,
+        email: user.email,
+        is_2fa_enabled: user.is_2fa_enabled
+      }
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Internal server error" 
+    });
+  }
+});
+
+// Token validation endpoint
+app.get("/auth/validate", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.user;
+    
+    // Get fresh user data
+    const userData = await client.query(
+      "SELECT username, role, id, email, is_2fa_enabled FROM auth WHERE username = $1",
+      [username]
+    );
+
+    if (userData.rows.length === 0) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: userData.rows[0]
+    });
+  } catch (err) {
+    console.error("Token validation error:", err);
+    res.status(500).json({ success: false, message: "Error validating token" });
+  }
+});
+
+// Keep old endpoint for backward compatibility but mark as deprecated
 app.post("/auth/:username/:password", async (req, res) => {
+  console.warn("DEPRECATED: Using old auth endpoint. Please migrate to POST /auth/login");
   const { username, password } = req.params;
   const data = await client.query(
     `SELECT * FROM auth WHERE username = '${username}' AND password = '${password}'`
@@ -187,22 +375,146 @@ app.post("/auth/:username/:password", async (req, res) => {
   console.log("Data sent successfully");
 });
 
-app.post("/addaccount", (req, res) => {
-  const { username, password, role, email } = req.body;
-  createAccount(
-    username,
-    password,
-    role,
-    email || null,
-    req.user?.username || "admin"
-  );
-  res.send("Data inserted");
+app.post("/addaccount", async (req, res) => {
+  try {
+    const { username, password, role, email } = req.body;
+    const adminUser = req.user?.username || "admin";
+    
+    await createAccount(username, password, role, email || null, adminUser);
+    res.json({ success: true, message: "Account created successfully" });
+  } catch (err) {
+    console.error("Add account error:", err);
+    res.status(500).json({ success: false, message: "Error creating account" });
+  }
 });
 
-app.post("/changepsw", (req, res) => {
-  const { username, password } = req.body;
-  changePassword(username, password);
-  res.send("Data updated");
+app.post("/changepsw", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    await changePassword(username, password);
+    res.json({ success: true, message: "Password updated successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    res.status(500).json({ success: false, message: "Error updating password" });
+  }
+});
+
+// 2FA Endpoints
+app.post("/auth/2fa/setup", authenticateToken, async (req, res) => {
+  try {
+    const { username } = req.user;
+    
+    const secret = speakeasy.generateSecret({
+      name: `ProductGuard (${username})`,
+      issuer: "ProductGuard"
+    });
+
+    // Store the temp secret (will be confirmed when user verifies)
+    await client.query(
+      "UPDATE auth SET two_factor_secret = $1 WHERE username = $2",
+      [secret.base32, username]
+    );
+
+    // Generate QR code
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+
+    res.json({
+      success: true,
+      secret: secret.base32,
+      qrCode: qrCodeUrl
+    });
+  } catch (err) {
+    console.error("2FA setup error:", err);
+    res.status(500).json({ success: false, message: "Error setting up 2FA" });
+  }
+});
+
+app.post("/auth/2fa/verify", authenticateToken, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { username } = req.user;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Token is required" });
+    }
+
+    // Get user's secret
+    const userData = await client.query(
+      "SELECT two_factor_secret FROM auth WHERE username = $1",
+      [username]
+    );
+
+    if (!userData.rows[0]?.two_factor_secret) {
+      return res.status(400).json({ success: false, message: "2FA not set up" });
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: userData.rows[0].two_factor_secret,
+      encoding: 'base32',
+      token,
+      window: 2
+    });
+
+    if (verified) {
+      // Enable 2FA for this user
+      await client.query(
+        "UPDATE auth SET is_2fa_enabled = true WHERE username = $1",
+        [username]
+      );
+      
+      res.json({ success: true, message: "2FA enabled successfully" });
+    } else {
+      res.status(400).json({ success: false, message: "Invalid token" });
+    }
+  } catch (err) {
+    console.error("2FA verify error:", err);
+    res.status(500).json({ success: false, message: "Error verifying 2FA" });
+  }
+});
+
+app.post("/auth/2fa/disable", authenticateToken, async (req, res) => {
+  try {
+    const { password, token } = req.body;
+    const { username } = req.user;
+
+    if (!password || !token) {
+      return res.status(400).json({ success: false, message: "Password and 2FA token are required" });
+    }
+
+    // Verify current password
+    const userData = await client.query(
+      "SELECT password, two_factor_secret FROM auth WHERE username = $1",
+      [username]
+    );
+
+    const isValidPassword = await bcrypt.compare(password, userData.rows[0].password);
+    if (!isValidPassword) {
+      return res.status(401).json({ success: false, message: "Invalid password" });
+    }
+
+    // Verify 2FA token
+    const verified = speakeasy.totp.verify({
+      secret: userData.rows[0].two_factor_secret,
+      encoding: 'base32',
+      token,
+      window: 2
+    });
+
+    if (!verified) {
+      return res.status(400).json({ success: false, message: "Invalid 2FA token" });
+    }
+
+    // Disable 2FA
+    await client.query(
+      "UPDATE auth SET is_2fa_enabled = false, two_factor_secret = NULL WHERE username = $1",
+      [username]
+    );
+
+    res.json({ success: true, message: "2FA disabled successfully" });
+  } catch (err) {
+    console.error("2FA disable error:", err);
+    res.status(500).json({ success: false, message: "Error disabling 2FA" });
+  }
 });
 
 // profile
@@ -215,12 +527,18 @@ app.get("/profileAll", async (req, res) => {
 });
 
 app.get("/profile/:username", async (req, res) => {
-  const { username } = req.params;
-  const data = await client.query(
-    `SELECT * FROM profile WHERE username = '${username}'`
-  );
-  res.send(data.rows);
-  console.log("Data sent successfully");
+  try {
+    const { username } = req.params;
+    const data = await client.query(
+      "SELECT * FROM profile WHERE username = $1",
+      [username]
+    );
+    res.json({ success: true, data: data.rows });
+    console.log("Profile data sent successfully");
+  } catch (err) {
+    console.error("Profile fetch error:", err);
+    res.status(500).json({ success: false, message: "Error fetching profile" });
+  }
 });
 
 app.post("/addprofile", (req, res) => {

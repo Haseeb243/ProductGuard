@@ -13,6 +13,7 @@ import AddAccount from "./components/pages/AddAccount";
 import ManageAccount from "./components/pages/ManageAccount";
 import AddProduct from "./components/pages/AddProduct";
 import Profile from "./components/pages/Profile";
+import TwoFactorAuth from "./components/pages/TwoFactorAuth";
 import UpdateProduct from "./components/pages/UpdateProduct";
 import Product from "./components/pages/Product";
 import AuthenticProduct from "./components/pages/AuthenticProduct";
@@ -61,6 +62,7 @@ function App() {
           }
         >
           <Route exact path="/profile" element={<Profile />}></Route>
+          <Route exact path="/2fa-settings" element={<TwoFactorAuth />}></Route>
           <Route
             exact
             path="/update-product"
