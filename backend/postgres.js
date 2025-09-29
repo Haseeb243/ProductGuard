@@ -14,6 +14,7 @@ const rateLimit = require("express-rate-limit");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const crypto = require("crypto");
+const Joi = require("joi");
 require("dotenv").config();
 
 const app = express();
@@ -125,6 +126,38 @@ const io = chatService.initializeChat(server, corsOrigins, client);
     console.log("password_reset_tokens table ready");
   } catch (e) {
     console.error("Failed to ensure password_reset_tokens table:", e.message);
+  }
+})();
+
+// Ensure consumer_ownership table exists
+(async () => {
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS consumer_ownership (
+        id SERIAL PRIMARY KEY,
+        serial_number VARCHAR(50) NOT NULL,
+        owner_name VARCHAR(100) NOT NULL,
+        acquired_at TIMESTAMPTZ DEFAULT NOW(),
+        transferred_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    
+    // Add indexes for performance
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_consumer_ownership_serial_transferred'
+        ) THEN
+          CREATE INDEX idx_consumer_ownership_serial_transferred ON consumer_ownership(serial_number, transferred_at);
+        END IF;
+      END $$;
+    `);
+    
+    console.log("consumer_ownership table ready");
+  } catch (e) {
+    console.error("Failed to ensure consumer_ownership table:", e.message);
   }
 })();
 
@@ -1016,6 +1049,273 @@ function logActivity(username, action, target, details) {
     }
   );
 }
+
+// --- Enhanced Verification Scan Endpoint ---
+app.post("/verification/scan", async (req, res) => {
+  // Validation schema
+  const scanSchema = Joi.object({
+    serialNumber: Joi.string().alphanum().min(1).max(50).required(),
+    qrPayload: Joi.string().required(),
+    deviceLocation: Joi.object({
+      lat: Joi.number().min(-90).max(90),
+      lon: Joi.number().min(-180).max(180),
+      accuracy: Joi.number().min(0).optional()
+    }).optional(),
+    userAgent: Joi.string().max(500).optional(),
+    username: Joi.string().max(50).optional()
+  });
+
+  try {
+    // Validate input
+    const { error, value } = scanSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input: " + error.details[0].message
+      });
+    }
+
+    const { serialNumber, qrPayload, deviceLocation, userAgent, username } = value;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const finalUserAgent = userAgent || req.get("User-Agent");
+    
+    // Parse QR payload to verify contract address
+    const qrParts = qrPayload.split(",");
+    const contractAddress = qrParts[0];
+    const qrSerial = qrParts[1];
+    
+    // Get contract address from environment
+    const expectedContractAddress = process.env.CONTRACT_ADDRESS || process.env.REACT_APP_CONTRACT_ADDRESS;
+    
+    // Determine authenticity
+    let isAuthentic = false;
+    let isSuspicious = false;
+    let suspicionReason = null;
+    
+    if (contractAddress === expectedContractAddress && qrSerial === serialNumber) {
+      // Check if product exists in database
+      const productExists = await client.query(
+        "SELECT serialNumber, name, brand FROM product WHERE serialNumber = $1",
+        [serialNumber]
+      );
+      
+      isAuthentic = productExists.rows.length > 0;
+      if (!isAuthentic) {
+        isSuspicious = true;
+        suspicionReason = "Product not found in database";
+      }
+    } else {
+      isAuthentic = false;
+      isSuspicious = true;
+      suspicionReason = "QR code does not match expected format or contract address";
+    }
+    
+    // Check for suspicious scanning patterns (rapid scans from different IPs)
+    if (isAuthentic && !isSuspicious) {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const recentScans = await client.query(
+        `SELECT DISTINCT ip_address FROM product_scans 
+         WHERE serial_number = $1 AND scan_time > $2 AND ip_address != $3`,
+        [serialNumber, tenMinutesAgo, ipAddress]
+      );
+      
+      const currentScans = await client.query(
+        `SELECT COUNT(*) as count FROM product_scans 
+         WHERE serial_number = $1 AND scan_time > $2`,
+        [serialNumber, tenMinutesAgo]
+      );
+      
+      const totalRecentScans = parseInt(currentScans.rows[0].count) + 1; // +1 for current scan
+      const uniqueIPs = recentScans.rows.length + 1; // +1 for current IP
+      
+      if (totalRecentScans > 3 && uniqueIPs > 2) {
+        isSuspicious = true;
+        suspicionReason = "rapid_scans_multiple_ips";
+      }
+    }
+    
+    // Format location for database storage
+    let locationStr = null;
+    if (deviceLocation) {
+      locationStr = JSON.stringify(deviceLocation);
+    }
+    
+    // Log the scan
+    await client.query(
+      `INSERT INTO product_scans 
+       (serial_number, username, location, is_authentic, is_suspicious, suspicion_reason, ip_address, user_agent, scan_time) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+      [serialNumber, username || 'anonymous', locationStr, isAuthentic, isSuspicious, suspicionReason, ipAddress, finalUserAgent]
+    );
+    
+    // Get product details if authentic
+    let product = null;
+    if (isAuthentic) {
+      const productResult = await client.query(
+        "SELECT serialNumber, name, brand FROM product WHERE serialNumber = $1",
+        [serialNumber]
+      );
+      if (productResult.rows.length > 0) {
+        product = productResult.rows[0];
+      }
+    }
+    
+    // Log activity
+    logActivity(
+      username || 'anonymous',
+      'product_verification_scan',
+      serialNumber,
+      `Verification scan - Authentic: ${isAuthentic}, Suspicious: ${isSuspicious}`
+    );
+    
+    // Return verification result
+    res.json({
+      success: true,
+      isAuthentic,
+      isSuspicious,
+      suspicionReason,
+      product,
+      message: "Verification completed successfully"
+    });
+    
+  } catch (err) {
+    console.error("Verification scan error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error processing verification scan"
+    });
+  }
+});
+
+// --- Consumer Ownership Endpoints ---
+app.post("/verification/ownership/receive", async (req, res) => {
+  const ownershipSchema = Joi.object({
+    serialNumber: Joi.string().alphanum().min(1).max(50).required(),
+    ownerName: Joi.string().min(1).max(100).required()
+  });
+  
+  try {
+    const { error, value } = ownershipSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input: " + error.details[0].message
+      });
+    }
+    
+    const { serialNumber, ownerName } = value;
+    
+    // Check if product exists
+    const productExists = await client.query(
+      "SELECT serialNumber FROM product WHERE serialNumber = $1",
+      [serialNumber]
+    );
+    
+    if (productExists.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found"
+      });
+    }
+    
+    // Close any existing ownership record
+    await client.query(
+      "UPDATE consumer_ownership SET transferred_at = NOW() WHERE serial_number = $1 AND transferred_at IS NULL",
+      [serialNumber]
+    );
+    
+    // Create new ownership record
+    await client.query(
+      "INSERT INTO consumer_ownership (serial_number, owner_name) VALUES ($1, $2)",
+      [serialNumber, ownerName]
+    );
+    
+    // Log activity
+    logActivity(
+      ownerName,
+      'consumer_received',
+      serialNumber,
+      `Consumer received product: ${ownerName}`
+    );
+    
+    res.json({
+      success: true,
+      message: "Ownership recorded successfully"
+    });
+    
+  } catch (err) {
+    console.error("Ownership receive error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error recording ownership"
+    });
+  }
+});
+
+app.post("/verification/ownership/sell", async (req, res) => {
+  const sellSchema = Joi.object({
+    serialNumber: Joi.string().alphanum().min(1).max(50).required(),
+    currentOwner: Joi.string().min(1).max(100).required(),
+    newOwner: Joi.string().min(1).max(100).required()
+  });
+  
+  try {
+    const { error, value } = sellSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input: " + error.details[0].message
+      });
+    }
+    
+    const { serialNumber, currentOwner, newOwner } = value;
+    
+    // Find current ownership record
+    const currentOwnership = await client.query(
+      "SELECT id FROM consumer_ownership WHERE serial_number = $1 AND owner_name = $2 AND transferred_at IS NULL",
+      [serialNumber, currentOwner]
+    );
+    
+    if (currentOwnership.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Current ownership not found"
+      });
+    }
+    
+    // Mark current ownership as transferred
+    await client.query(
+      "UPDATE consumer_ownership SET transferred_at = NOW() WHERE id = $1",
+      [currentOwnership.rows[0].id]
+    );
+    
+    // Create new ownership record
+    await client.query(
+      "INSERT INTO consumer_ownership (serial_number, owner_name) VALUES ($1, $2)",
+      [serialNumber, newOwner]
+    );
+    
+    // Log activity
+    logActivity(
+      currentOwner,
+      'consumer_sold',
+      serialNumber,
+      `Product sold from ${currentOwner} to ${newOwner}`
+    );
+    
+    res.json({
+      success: true,
+      message: "Ownership transfer completed successfully"
+    });
+    
+  } catch (err) {
+    console.error("Ownership sell error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error transferring ownership"
+    });
+  }
+});
 
 // --- Add Product Scan Logging Endpoint ---
 app.post("/scan-product", async (req, res) => {

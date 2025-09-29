@@ -81,22 +81,22 @@ New Features Added
 
 ## 1.3.2 Product Lifecycle & Consumer Verification Module
 
-Status: Partial (~) — largely implemented
+Status: ✅ COMPLETED
 
 Evidence
 
-- Product registration (on-chain + DB): `AddProduct.jsx`, `/addproduct` (partial)
+- [x] Product registration (on-chain + DB): `AddProduct.jsx`, `/addproduct`
 - [x] QR code generation: `AddProduct.jsx` (QRCode.react)
 - [x] Supply chain updates (on-chain history): `UpdateProduct*.jsx` calling `addProductHistory`
 - [x] QR scanning + routing: `ScannerPage.jsx` + `QrScanner.js`
 - [x] Verification against contract address: compare scanned address with env
 - [x] Product scan logging: `/scan-product`
 
-Gaps
+Gaps (RESOLVED ✅)
 
-- Duplicate QR detection logic is basic (only contract address mismatch)
-- No consumer-facing product details page with full on-chain history timeline
-- Limited server-side validation for product registration
+- ~~Duplicate QR detection logic is basic (only contract address mismatch)~~ ✅ Enhanced with suspicious activity detection
+- ~~No consumer-facing product details page with full on-chain history timeline~~ ✅ New ConsumerVerification.jsx page
+- ~~Limited server-side validation for product registration~~ ✅ Joi validation implemented
 
 Essentials (low-complexity)
 
@@ -138,19 +138,19 @@ Optional (later)
 - [ ] Simple rate limiting per IP for `/verification/scan`
 - [ ] “Proof of purchase” attachment (optional image upload, validated with Multer limits)
 
-Implementation notes (free & simple)
+Implementation notes (free & simple) - COMPLETED ✅
 
 - DB
-  - [ ] Add `consumer_ownership` table as above; keep existing `product_scans` structure; add an index on `product_scans(serial_number, scan_time)` if not present
-  - [ ] No migrations depend on generated IDs in data migrations; write idempotent `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+  - [x] Add `consumer_ownership` table as above; keep existing `product_scans` structure; add an index on `product_scans(serial_number, scan_time)` if not present
+  - [x] No migrations depend on generated IDs in data migrations; write idempotent `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
 - Backend (Express)
-  - [ ] New route `/verification/scan` (see contract above)
-  - [ ] Ownership routes: `POST /verification/ownership/receive` and `/verification/ownership/sell`
-  - [ ] Use parameterized SQL everywhere; log to `activity_log`
+  - [x] New route `/verification/scan` (see contract above)
+  - [x] Ownership routes: `POST /verification/ownership/receive` and `/verification/ownership/sell`
+  - [x] Use parameterized SQL everywhere; log to `activity_log`
 - Frontend (React)
-  - [ ] Verification page under public routes; reuse existing `QrScanner` where possible
-  - [ ] Location prompt uses `navigator.geolocation`; if blocked, show guidance to enable location in browser settings
-  - [ ] Ownership prompts: small modal with name input (min length and simple validation)
+  - [x] Verification page under public routes; reuse existing `QrScanner` where possible
+  - [x] Location prompt uses `navigator.geolocation`; if blocked, show guidance to enable location in browser settings
+  - [x] Ownership prompts: small modal with name input (min length and simple validation)
 
 ---
 

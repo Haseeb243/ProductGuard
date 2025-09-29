@@ -25,16 +25,25 @@ const ScannerPage = () => {
     const contractAddress = arr[0];
     if (contractAddress) {
       if (contractAddress == CONTRACT_ADDRESS) {
-        if (auth.role === "supplier" || auth.role === "retailer") {
+        // Route based on authentication and role
+        if (!auth.username) {
+          // Not authenticated - route to consumer verification page
+          navigate("/verify", { state: { qrData } });
+        } else if (auth.role === "supplier" || auth.role === "retailer") {
           navigate("/update-product", { state: { qrData } });
         } else {
           navigate("/authentic-product", { state: { qrData } });
         }
       } else {
-        navigate("/fake-product", { state: { qrData } });
+        // Invalid contract address - route to fake product page or verification
+        if (!auth.username) {
+          navigate("/verify", { state: { qrData } });
+        } else {
+          navigate("/fake-product", { state: { qrData } });
+        }
       }
     }
-  }, [qrData]);
+  }, [qrData, auth]);
 
   const handleBack = () => {
     navigate(-1);

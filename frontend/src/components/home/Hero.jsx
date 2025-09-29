@@ -19,14 +19,19 @@ const Hero = () => {
             Our advanced product protection system ensures authenticity and builds trust through blockchain technology. Guard your brand and customers from counterfeiting.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 mb-8">
-            <Link to="/scanner">
+            <Link to="/verify">
               <button className="w-full sm:w-auto px-8 py-4 bg-primary-500 text-white rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-primary-500/20">
+                Verify Product
+              </button>
+            </Link>
+            <Link to="/scanner">
+              <button className="w-full sm:w-auto px-8 py-4 bg-gray-800 text-primary-400 rounded-xl hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105 shadow-lg border border-primary-500/20">
                 Scan QR Code
               </button>
             </Link>
             <Link to="/login">
-              <button className="w-full sm:w-auto px-8 py-4 bg-gray-800 text-primary-400 rounded-xl hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105 shadow-lg border border-primary-500/20">
-                Get Started
+              <button className="w-full sm:w-auto px-8 py-4 bg-gray-800 text-gray-300 rounded-xl hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-200 transform hover:scale-105 shadow-lg border border-gray-600/20">
+                Login
               </button>
             </Link>
           </div>

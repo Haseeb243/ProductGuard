@@ -22,6 +22,7 @@ import AuthenticProduct from "./components/pages/AuthenticProduct";
 import FakeProduct from "./components/pages/FakeProduct";
 import UpdateProductDetails from "./components/pages/UpdateProductDetails";
 import SupportDashboard from "./components/SupportDashboard";
+import ConsumerVerification from "./components/pages/ConsumerVerification";
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
         <Route exact path="/login" element={<Login />}></Route>
         <Route exact path="/scanner" element={<ScannerPage />}></Route>
         <Route exact path="/product" element={<Product />}></Route>
+        <Route exact path="/verify" element={<ConsumerVerification />}></Route>
         <Route
           exact
           path="/authentic-product"
