@@ -11,9 +11,9 @@ Implementation principles (for this roadmap)
 
 Legend
 
-- [x] Done
-- [~] Partial / needs improvement
-- [ ] Not implemented yet
+- ✅ Done
+- ~ Partial / needs improvement
+- ☐ Not implemented yet
 
 Repo anchors
 
@@ -26,28 +26,28 @@ Repo anchors
 
 ## 1.3.1 User Management & Authentication Module
 
-Status: [x] (Completed)
+Status: Completed ✅
 
 Evidence
 
-- Login endpoint: `POST /auth/login` + frontend `Login.jsx` [x]
-- Role-based UI routing: `RequireAuth` with roles [x]
-- Create/change user endpoints: `/addaccount`, `/changepsw` [x]
-- Profiles CRUD (partial): `/profileAll`, `/profile/:username`, `/addprofile` [x]
-- Audit logs exist: `login_attempts`, `activity_log` [x]
-- JWT authentication with secure token handling [x]
-- Password hashing with bcrypt [x]
-- RBAC middleware for route protection [x]
-- Two-Factor Authentication (2FA) support [x]
-- Rate limiting on login attempts [x]
+- [x] Login endpoint: `POST /auth/login` + frontend `Login.jsx`
+- [x] Role-based UI routing: `RequireAuth` with roles
+- [x] Create/change user endpoints: `/addaccount`, `/changepsw`
+- [x] Profiles CRUD (partial): `/profileAll`, `/profile/:username`, `/addprofile`
+- [x] Audit logs exist: `login_attempts`, `activity_log`
+- [x] JWT authentication with secure token handling
+- [x] Password hashing with bcrypt
+- [x] RBAC middleware for route protection
+- [x] Two-Factor Authentication (2FA) support
+- [x] Rate limiting on login attempts
 
 Gaps (All Fixed)
 
-- ~~Passwords stored in plaintext (no hashing)~~ [x] Now using bcrypt
-- ~~SQL injection in auth/profile queries (string interpolation)~~ [x] Now using parameterized queries
-- ~~No JWT/session; auth only in frontend memory~~ [x] Now using JWT tokens
-- ~~No backend authorization middleware (RBAC) protecting routes~~ [x] Now implemented
-- ~~No 2FA~~ [x] Now fully implemented
+- ~~Passwords stored in plaintext (no hashing)~~ — fixed ✅ (now using bcrypt)
+- ~~SQL injection in auth/profile queries (string interpolation)~~ — fixed ✅ (parameterized queries)
+- ~~No JWT/session; auth only in frontend memory~~ — fixed ✅ (JWT tokens)
+- ~~No backend authorization middleware (RBAC) protecting routes~~ — fixed ✅
+- ~~No 2FA~~ — fixed ✅
 
 Essentials (low-complexity) - ALL COMPLETED
 
@@ -81,16 +81,16 @@ New Features Added
 
 ## 1.3.2 Product Lifecycle & Consumer Verification Module
 
-Status: [~] (largely implemented)
+Status: Partial (~) — largely implemented
 
 Evidence
 
-- Product registration (on-chain + DB): `AddProduct.jsx`, `/addproduct` [~]
-- QR code generation: `AddProduct.jsx` (QRCode.react) [x]
-- Supply chain updates (on-chain history): `UpdateProduct*.jsx` calling `addProductHistory` [x]
-- QR scanning + routing: `ScannerPage.jsx` + `QrScanner.js` [x]
-- Verification against contract address: compare scanned address with env [x]
-- Product scan logging: `/scan-product` [x]
+- Product registration (on-chain + DB): `AddProduct.jsx`, `/addproduct` (partial)
+- [x] QR code generation: `AddProduct.jsx` (QRCode.react)
+- [x] Supply chain updates (on-chain history): `UpdateProduct*.jsx` calling `addProductHistory`
+- [x] QR scanning + routing: `ScannerPage.jsx` + `QrScanner.js`
+- [x] Verification against contract address: compare scanned address with env
+- [x] Product scan logging: `/scan-product`
 
 Gaps
 
@@ -100,24 +100,63 @@ Gaps
 
 Essentials (low-complexity)
 
-- [ ] Add a backend `/verification/scan` that:
-  - [ ] Logs the scan (already done) and returns a simple `isAuthentic` + `isSuspicious`
-  - [ ] Suspicious rule v1: “If the same serial is scanned >3 times in 10 minutes from different IPs, mark suspicious”
-- [ ] Consumer verification page that shows:
-  - [ ] Basic product details and on-chain history (ethers call)
-  - [ ] A simple badge for Suspicious if flagged
-- [ ] Validate inputs on the server using a small schema (e.g., `joi`)
+- [ ] Backend verification endpoint: add `POST /verification/scan`
+  - [ ] Input: `{ serialNumber, qrPayload, deviceLocation? { lat, lon, accuracy? }, userAgent? }`
+  - [ ] Behavior:
+    - [ ] Validate payload with `joi` (serialNumber shape, payload signature if present, optional location fields)
+    - [ ] Determine `isAuthentic` by comparing contract address/serial from QR with env/DB
+    - [ ] Log to `product_scans` (already present) including `ip_address`, `user_agent`, and `location` (lat/lon string or JSON)
+    - [ ] Suspicious rule v1: If same serial is scanned > 3 times within 10 minutes by different IPs, set `is_suspicious = true` and set `suspicion_reason = 'rapid_scans_multiple_ips'`
+    - [ ] Return `{ success, isAuthentic, isSuspicious, suspicionReason?, product? }`
+
+- [ ] Location handling (no paid APIs)
+  - [ ] Frontend: use `navigator.geolocation.getCurrentPosition`
+    - [ ] If permission denied or not available, show non-blocking prompt: “Enable location for better verification accuracy” and proceed without GPS
+    - [ ] Do not depend on only Google Maps API use when available; otherwise use device location 
+  - [ ] Backend: accept optional location; never fail if absent
+
+- [ ] Consumer verification page (public)
+  - [ ] Scan QR (existing) or paste serial; call `/verification/scan`
+  - [ ] Show product basics (name/brand/serial), on-chain history (ethers), and badges: `Authentic` / `Counterfeit` / `Suspicious`
+  - [ ] If `isSuspicious`, show simple reason string and “What this means” help
+
+- [ ] Duplicate/ownership flow (consumer name on secondary sale)
+  - [ ] DB: add a minimal `consumer_ownership` table
+    - Fields: `id, serial_number, owner_name, acquired_at timestamptz DEFAULT now(), transferred_at timestamptz`
+    - Index on `(serial_number, transferred_at)`
+  - [ ] Rule: first scan after manufacturer-to-consumer handover prompts “Mark as received?”; on confirmation, upsert `consumer_ownership` with `owner_name` (input)
+  - [ ] On a later scan when user selects “Mark as sold”, prompt for buyer’s name; close current record by setting `transferred_at`, and log buyer name into a new `consumer_ownership` row
+  - [ ] Also record these actions into `activity_log` with actions `consumer_received` / `consumer_sold`
+  - [ ] Keep flow optional and consumer-friendly; skip if user declines
+
+- [ ] Server-side input validation using `joi` for `/verification/scan` and ownership actions
 
 Optional (later)
 
-- [ ] HMAC/signature inside QR payload
-- [ ] More rules (geo anomalies, device fingerprint)
+- [ ] HMAC/signature inside QR payload (sign `{contract, serial, issuedAt}`); verify on server
+- [ ] More suspicion rules (geo anomalies, impossible travel, device fingerprint hash)
+- [ ] Simple rate limiting per IP for `/verification/scan`
+- [ ] “Proof of purchase” attachment (optional image upload, validated with Multer limits)
+
+Implementation notes (free & simple)
+
+- DB
+  - [ ] Add `consumer_ownership` table as above; keep existing `product_scans` structure; add an index on `product_scans(serial_number, scan_time)` if not present
+  - [ ] No migrations depend on generated IDs in data migrations; write idempotent `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+- Backend (Express)
+  - [ ] New route `/verification/scan` (see contract above)
+  - [ ] Ownership routes: `POST /verification/ownership/receive` and `/verification/ownership/sell`
+  - [ ] Use parameterized SQL everywhere; log to `activity_log`
+- Frontend (React)
+  - [ ] Verification page under public routes; reuse existing `QrScanner` where possible
+  - [ ] Location prompt uses `navigator.geolocation`; if blocked, show guidance to enable location in browser settings
+  - [ ] Ownership prompts: small modal with name input (min length and simple validation)
 
 ---
 
 ## 1.3.3 Communication & Customer Support Module
 
-Status: [x]
+Status: Completed ✅
 
 Essentials (low-complexity)
 
@@ -192,12 +231,12 @@ Evidence
 
 ## 1.3.5 Blockchain Transaction History Module
 
-Status: [~]
+Status: Partial (~)
 
 Evidence
 
-- Contract `Identeefi` supports product history (`addProductHistory`, `getProduct`) [x]
-- Frontend reads/writes via Ethers.js [x]
+- [x] Contract `Identeefi` supports product history (`addProductHistory`, `getProduct`)
+- [x] Frontend reads/writes via Ethers.js
 
 Gaps
 
@@ -218,12 +257,12 @@ Optional (later)
 
 ## 1.3.6 Analytical Reports & Dashboard Module
 
-Status: [~]
+Status: Partial (~)
 
 Evidence
 
-- Endpoint `/dashboard-analytics` with basic counts [~]
-- Frontend has chart libs (ApexCharts/Recharts) [x]
+- Endpoint `/dashboard-analytics` with basic counts (partial)
+- [x] Frontend has chart libs (ApexCharts/Recharts)
 
 Gaps
 
@@ -242,7 +281,7 @@ Optional (later)
 
 ## 1.3.7 Inventory & Product Movement Management Module
 
-Status: [ ]
+Status: Not implemented ☐
 
 Gaps
 
