@@ -50,6 +50,7 @@ const Product = () => {
   const [history, setHistory] = useState([]);
   const [isSold, setIsSold] = useState(false);
   const [image, setImage] = useState({ file: [], filepreview: null });
+  const [owner, setOwner] = useState(null);
 
   const { apiBaseUrl, contractAddress } = useConfig();
   const CONTRACT_ADDRESS = contractAddress; // Update to your deployed address
@@ -58,6 +59,7 @@ const Product = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const qrData = location.state?.qrData;
+  const flaggedSuspicious = Boolean(location.state?.isSuspicious);
 
   useEffect(() => {
     console.log("useEffect 1");
@@ -109,6 +111,18 @@ const Product = () => {
 
           console.log("Retrieved product...", product);
           setData(product.toString());
+          // Fetch current owner details from backend
+          try {
+            const resp = await fetch(`${apiBaseUrl}/ownership/${data[1]}`);
+            if (resp.ok) {
+              const body = await resp.json();
+              if (body?.success && body?.owner) {
+                setOwner(body.owner);
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to fetch owner details:", e);
+          }
         } else {
           console.log("Ethereum object doesn't exist!");
         }
@@ -203,6 +217,11 @@ const Product = () => {
               alt={name}
               className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg mb-2 bg-blue-200"
             />
+            {flaggedSuspicious && (
+              <div className="mt-2 px-2 py-1 text-xs font-semibold bg-yellow-400 text-gray-900 rounded">
+                Suspicious pattern
+              </div>
+            )}
           </div>
           <div className="flex flex-col flex-grow text-white">
             <div className="text-xl font-semibold mb-2">{name}</div>
@@ -211,6 +230,23 @@ const Product = () => {
             </div>
             <div className="text-sm mb-1">Description: {description}</div>
             <div className="text-sm mb-1">Brand: {brand}</div>
+            {owner && (
+              <div className="mt-3 p-3 rounded-lg bg-white/10 border border-white/20">
+                <div className="text-sm font-semibold mb-1">Current Owner</div>
+                <div className="text-sm">Name: {owner.owner_name}</div>
+                {owner.owner_identifier && (
+                  <div className="text-sm">
+                    Identifier: {owner.owner_identifier}
+                  </div>
+                )}
+                {owner.acquired_at && (
+                  <div className="text-xs text-white/70 mt-1">
+                    Since:{" "}
+                    {dayjs(owner.acquired_at).format("MMM D, YYYY h:mm A")}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="mb-8">

@@ -14,6 +14,7 @@ const rateLimit = require("express-rate-limit");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const crypto = require("crypto");
+const Joi = require("joi");
 require("dotenv").config();
 
 const app = express();
@@ -250,7 +251,13 @@ const storageProfile = multer.diskStorage({
   },
 });
 
-function addProduct(serialNumber, name, brand, username) {
+function addProduct(
+  serialNumber,
+  name,
+  brand,
+  username,
+  contractAddress = null
+) {
   client.query(
     "INSERT INTO product (serialNumber, name, brand) VALUES ($1, $2, $3)",
     [serialNumber, name, brand],
@@ -280,6 +287,8 @@ function addProduct(serialNumber, name, brand, username) {
               productName: name,
               brand: brand,
               serialNumber: serialNumber,
+              contractAddress:
+                contractAddress || process.env.CONTRACT_ADDRESS || null,
             };
 
             await emailService.sendProductRegistrationEmail(
@@ -910,11 +919,31 @@ app.get("/product/serialNumber", async (req, res) => {
 });
 
 app.post("/addproduct", (req, res) => {
-  const { serialNumber, name, brand, username } = req.body;
+  // Validate input
+  const addProductSchema = Joi.object({
+    serialNumber: Joi.string().trim().min(1).max(64).required(),
+    name: Joi.string().trim().min(1).max(100).required(),
+    brand: Joi.string().trim().min(1).max(100).required(),
+    username: Joi.string().allow(null, ""),
+    contractAddress: Joi.string().trim().allow(null, ""),
+  });
+
+  const { value, error } = addProductSchema.validate(req.body || {}, {
+    abortEarly: false,
+    stripUnknown: true,
+  });
+
+  if (error) {
+    return res
+      .status(400)
+      .json({ success: false, message: `Invalid payload: ${error.message}` });
+  }
+
+  const { serialNumber, name, brand, username, contractAddress } = value;
   // Prefer username from body (frontend sends the logged-in manufacturer)
   const actor = username || req.user?.username || "admin";
-  addProduct(serialNumber, name, brand, actor);
-  res.send("Data inserted");
+  addProduct(serialNumber, name, brand, actor, contractAddress || null);
+  res.json({ success: true, message: "Product inserted" });
 });
 
 // --- Logging Functions ---
@@ -1017,6 +1046,125 @@ function logActivity(username, action, target, details) {
   );
 }
 
+// ===== Consumer Ownership Helpers & Endpoints =====
+async function closeExistingOwnership(serialNumber) {
+  try {
+    await client.query(
+      `UPDATE consumer_ownership
+       SET transferred_at = NOW()
+       WHERE serial_number = $1 AND transferred_at IS NULL`,
+      [serialNumber]
+    );
+  } catch (e) {
+    console.warn("Failed to close existing ownership:", e?.message);
+  }
+}
+
+// Transfer or set current owner of a serial number
+app.post("/ownership/transfer", async (req, res) => {
+  try {
+    const schema = Joi.object({
+      serialNumber: Joi.string().trim().required(),
+      ownerName: Joi.string().trim().required(),
+      ownerIdentifier: Joi.string().trim().min(3).max(128).required(),
+      actor: Joi.string().allow(null, ""),
+    });
+    const { value, error } = schema.validate(req.body || {}, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+    if (error) {
+      return res
+        .status(400)
+        .json({ success: false, message: `Invalid payload: ${error.message}` });
+    }
+
+    const { serialNumber, ownerName, ownerIdentifier, actor } = value;
+
+    await client.query("BEGIN");
+    await closeExistingOwnership(serialNumber);
+
+    // Insert new owner. Support schemas with/without owner_identifier column
+    let inserted = false;
+    try {
+      await client.query(
+        `INSERT INTO consumer_ownership (serial_number, owner_name, owner_identifier)
+         VALUES ($1, $2, $3)`,
+        [serialNumber, ownerName, ownerIdentifier]
+      );
+      inserted = true;
+    } catch (e1) {
+      console.warn(
+        "consumer_ownership insert with owner_identifier failed, retrying without column:",
+        e1?.message
+      );
+      await client.query(
+        `INSERT INTO consumer_ownership (serial_number, owner_name)
+         VALUES ($1, $2)`,
+        [serialNumber, ownerName]
+      );
+      inserted = true;
+    }
+
+    await client.query("COMMIT");
+
+    logActivity(
+      actor || "system",
+      "ownership_transfer",
+      serialNumber,
+      `Ownership set to ${ownerName} (${ownerIdentifier})`
+    );
+
+    return res.json({ success: true });
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("/ownership/transfer error:", e);
+    return res
+      .status(500)
+      .json({ success: false, message: "Error updating ownership" });
+  }
+});
+
+// Get current owner (no transferred_at)
+app.get("/ownership/:serialNumber", async (req, res) => {
+  try {
+    const { serialNumber } = req.params;
+    let row = null;
+    try {
+      const r = await client.query(
+        `SELECT serial_number, owner_name,
+                COALESCE(owner_identifier, NULL) AS owner_identifier,
+                acquired_at, transferred_at
+         FROM consumer_ownership
+         WHERE serial_number = $1
+         ORDER BY id DESC
+         LIMIT 1`,
+        [serialNumber]
+      );
+      row = r.rows?.[0] || null;
+    } catch (e1) {
+      // Fallback for schemas without owner_identifier
+      const r2 = await client.query(
+        `SELECT serial_number, owner_name,
+                NULL::text AS owner_identifier,
+                acquired_at, transferred_at
+         FROM consumer_ownership
+         WHERE serial_number = $1
+         ORDER BY id DESC
+         LIMIT 1`,
+        [serialNumber]
+      );
+      row = r2.rows?.[0] || null;
+    }
+    return res.json({ success: true, owner: row });
+  } catch (e) {
+    console.error("/ownership/:serialNumber error:", e);
+    return res
+      .status(500)
+      .json({ success: false, message: "Error fetching ownership" });
+  }
+});
+
 // --- Add Product Scan Logging Endpoint ---
 app.post("/scan-product", async (req, res) => {
   const { serialNumber, username, location, isAuthentic } = req.body;
@@ -1059,6 +1207,157 @@ app.post("/scan-product", async (req, res) => {
       success: false,
       message: "Error logging scan",
     });
+  }
+});
+
+// ===== Verification Endpoint with Duplicate Detection =====
+// Rule v1: same serial scanned from >3 distinct IPs within 10 minutes => suspicious
+async function computeDuplicateSuspicion(serialNumber) {
+  const windowMinutes = 10;
+  const windowQuery = `
+    SELECT COUNT(DISTINCT ip_address) AS ip_count
+    FROM product_scans
+    WHERE serial_number = $1
+      AND scan_time >= NOW() - INTERVAL '${windowMinutes} minutes'
+      AND ip_address IS NOT NULL
+  `;
+  const r = await client.query(windowQuery, [serialNumber]);
+  const ipCount = parseInt(r.rows?.[0]?.ip_count || 0, 10);
+  const threshold = 3;
+  return {
+    isSuspicious: ipCount > threshold,
+    reason:
+      ipCount > threshold
+        ? `Serial scanned from ${ipCount} distinct IPs in last ${windowMinutes} minutes`
+        : null,
+  };
+}
+
+const verifyScanSchema = Joi.object({
+  qrData: Joi.string().trim().required(), // expected format: "CONTRACT,serial"
+  username: Joi.string().allow(null, "").default("anonymous"),
+  location: Joi.string().allow(null, ""),
+});
+
+app.post("/verification/scan", async (req, res) => {
+  try {
+    // Validate input
+    const { value, error } = verifyScanSchema.validate(req.body || {}, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+    if (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    const { qrData, username, location } = value;
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get("User-Agent");
+
+    // Parse QR payload
+    const parts = String(qrData).split(",");
+    if (parts.length < 2) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid QR payload" });
+    }
+    const qrContract = parts[0];
+    const serialNumber = parts[1];
+
+    // Determine authenticity by contract matching; optionally verify product existence in DB
+    const expectedContract = process.env.CONTRACT_ADDRESS || null;
+    const isAuthentic = expectedContract
+      ? qrContract === expectedContract
+      : true; // if env not set, don’t auto-fail
+
+    // Log the scan immediately
+    await client.query(
+      `INSERT INTO product_scans (serial_number, username, location, is_authentic, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        serialNumber,
+        username || "anonymous",
+        location || null,
+        isAuthentic,
+        ipAddress,
+        userAgent,
+      ]
+    );
+
+    // Evaluate duplicate suspicion window
+    const dup = await computeDuplicateSuspicion(serialNumber);
+    let isSuspicious = dup.isSuspicious || false;
+    let suspicionReason = dup.reason || null;
+
+    // Non-authentic scans are always suspicious
+    if (!isAuthentic) {
+      isSuspicious = true;
+      suspicionReason = suspicionReason || "Contract address mismatch";
+    }
+
+    // Update the last inserted scan row to set suspicion fields
+    try {
+      await client.query(
+        `UPDATE product_scans
+         SET is_suspicious = $1, suspicion_reason = $2
+         WHERE id = (
+           SELECT id FROM product_scans WHERE serial_number = $3 ORDER BY id DESC LIMIT 1
+         )`,
+        [isSuspicious, suspicionReason, serialNumber]
+      );
+    } catch {}
+
+    // Activity log (optional)
+    logActivity(
+      username || "anonymous",
+      "product_verification_scan",
+      serialNumber,
+      `Verification scan - Authentic: ${isAuthentic}, Suspicious: ${isSuspicious}`
+    );
+
+    // If suspicious, optionally notify owner (reuse existing email logic)
+    if (isSuspicious) {
+      try {
+        const productResult = await client.query(
+          `SELECT p.name as product_name, p.brand, a.email
+           FROM product p 
+           LEFT JOIN auth a ON a.username = (
+             SELECT al.username FROM activity_log al 
+             WHERE al.action = 'add_product' AND al.target = p.serialnumber 
+             ORDER BY al.log_time DESC LIMIT 1
+           )
+           WHERE p.serialnumber = $1`,
+          [serialNumber]
+        );
+        if (productResult.rows.length > 0 && productResult.rows[0].email) {
+          const product = productResult.rows[0];
+          await emailService.sendSuspiciousScanEmail(client, product.email, {
+            productName: product.product_name,
+            serialNumber,
+            scanTime: new Date(),
+            suspicionReason: suspicionReason || "Duplicate scan pattern",
+            ipAddress,
+            location: location || null,
+          });
+        }
+      } catch (e) {
+        console.warn("Suspicious scan email failed:", e?.message);
+      }
+    }
+
+    // Build response
+    return res.json({
+      success: true,
+      isAuthentic,
+      isSuspicious,
+      suspicionReason,
+      serialNumber,
+    });
+  } catch (e) {
+    console.error("/verification/scan error:", e);
+    return res
+      .status(500)
+      .json({ success: false, message: "Error processing verification scan" });
   }
 });
 
@@ -1386,6 +1685,62 @@ app.get("/analytics/activity/summary", async (req, res) => {
       success: false,
       message: "Error fetching activity summary",
     });
+  }
+});
+
+// Counterfeit detection report: high-risk products by counterfeit rate
+app.get("/analytics/counterfeit/top", async (req, res) => {
+  const limit = parseInt(req.query.limit) || 10;
+  const days = parseInt(req.query.days) || 30;
+  try {
+    const q = `
+      SELECT 
+        serial_number,
+        COUNT(*)::int AS total_scans,
+        COUNT(CASE WHEN is_authentic = false THEN 1 END)::int AS counterfeit_scans,
+        ROUND(
+          CASE WHEN COUNT(*) = 0 THEN 0
+               ELSE (COUNT(CASE WHEN is_authentic = false THEN 1 END)::numeric / COUNT(*)::numeric) * 100
+          END, 2
+        ) AS counterfeit_rate
+      FROM product_scans
+      WHERE scan_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY serial_number
+      HAVING COUNT(*) >= 1
+      ORDER BY counterfeit_rate DESC, total_scans DESC
+      LIMIT ${limit}
+    `;
+    const r = await client.query(q);
+    res.json({ success: true, data: r.rows, period: `${days} days` });
+  } catch (e) {
+    console.error("Error fetching counterfeit report:", e);
+    res
+      .status(500)
+      .json({ success: false, message: "Error fetching counterfeit report" });
+  }
+});
+
+// Scans by geography (country/city) report
+app.get("/analytics/scans/geo", async (req, res) => {
+  const days = parseInt(req.query.days) || 30;
+  try {
+    const q = `
+      SELECT 
+        COALESCE(geo_country, 'Unknown') AS country,
+        COALESCE(geo_city, 'Unknown') AS city,
+        COUNT(*)::int AS scans
+      FROM product_scans
+      WHERE scan_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY COALESCE(geo_country, 'Unknown'), COALESCE(geo_city, 'Unknown')
+      ORDER BY scans DESC
+    `;
+    const r = await client.query(q);
+    res.json({ success: true, data: r.rows, period: `${days} days` });
+  } catch (e) {
+    console.error("Error fetching geo scans:", e);
+    res
+      .status(500)
+      .json({ success: false, message: "Error fetching geo scans" });
   }
 });
 

@@ -42,6 +42,9 @@ const UpdateProductDetails = () => {
   const [serialNumber, setSerialNumber] = useState("");
   const [isSold, setIsSold] = useState(false);
   const [loading, setLoading] = useState("");
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerIdentifier, setBuyerIdentifier] = useState("");
+  const [formError, setFormError] = useState("");
 
   const { apiBaseUrl, contractAddress, googleMapsApiKey } = useConfig();
   const CONTRACT_ADDRESS = contractAddress;
@@ -51,6 +54,7 @@ const UpdateProductDetails = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const qrData = location.state?.qrData;
+  const flaggedSuspicious = Boolean(location.state?.isSuspicious);
 
   useEffect(() => {
     if (!qrData) return;
@@ -69,28 +73,79 @@ const UpdateProductDetails = () => {
   }, []);
 
   useEffect(() => {
-    if (googleMapsApiKey) {
-      Geocode.setApiKey(googleMapsApiKey);
-    }
-    if (currLatitude && currLongtitude) {
-      Geocode.fromLatLng(currLatitude, currLongtitude).then(
-        (response) => {
-          const address = response.results[0].formatted_address;
-          setCurrLocation(address.replace(/,/g, ";"));
+    const doReverse = async () => {
+      if (!currLatitude || !currLongtitude) return;
+      if (googleMapsApiKey) {
+        try {
+          Geocode.setApiKey(googleMapsApiKey);
+          const response = await Geocode.fromLatLng(
+            currLatitude,
+            currLongtitude
+          );
+          const address = response.results?.[0]?.formatted_address;
+          if (address) {
+            setCurrLocation(address.replace(/,/g, ";"));
+            return;
+          }
+        } catch (e) {
+          console.warn("Google reverse geocoding failed, trying 3rd-party:", e);
+        }
+      }
+      try {
+        const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(
+          currLatitude
+        )}&longitude=${encodeURIComponent(currLongtitude)}&localityLanguage=en`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const data = await resp.json();
+          const parts = [
+            data.locality || data.city || data.principalSubdivision,
+            data.countryName,
+          ].filter(Boolean);
+          if (parts.length) {
+            setCurrLocation(parts.join(", ").replace(/,/g, ";"));
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("BigDataCloud reverse geocoding failed:", e);
+      }
+      setCurrLocation(`lat:${currLatitude};lon:${currLongtitude}`);
+    };
+    doReverse();
+  }, [currLatitude, currLongtitude, googleMapsApiKey]);
+
+  const getCurrentTimeLocation = async () => {
+    setCurrDate(dayjs().unix());
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const status = await navigator.permissions.query({
+            name: "geolocation",
+          });
+          if (status.state === "denied") {
+            alert(
+              "Location access is blocked. Please enable location permissions for this site and try again."
+            );
+          }
+        } catch {}
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrLatitude(position.coords.latitude);
+          setCurrLongtitude(position.coords.longitude);
         },
         (error) => {
-          console.error(error);
-        }
+          console.warn("Geolocation error:", error?.message || error);
+          alert(
+            "Unable to access device location. Please enable location services and permissions, then try again."
+          );
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
+    } catch (e) {
+      console.warn("getCurrentTimeLocation failed:", e);
     }
-  }, [currLatitude, currLongtitude]);
-
-  const getCurrentTimeLocation = () => {
-    setCurrDate(dayjs().unix());
-    navigator.geolocation.getCurrentPosition(function (position) {
-      setCurrLatitude(position.coords.latitude);
-      setCurrLongtitude(position.coords.longitude);
-    });
   };
 
   const getUsername = async () => {
@@ -138,7 +193,29 @@ const UpdateProductDetails = () => {
     setLoading(
       "Please pay the transaction fee to update the product details..."
     );
+    // If marking sold, validate buyer info before transacting
+    if (isSold) {
+      if (!buyerName?.trim() || !buyerIdentifier?.trim()) {
+        setFormError(
+          "Please provide the consumer's full name and an identifier before submitting."
+        );
+        setLoading("");
+        return;
+      }
+    }
     await updateProduct(e);
+    if (isSold) {
+      try {
+        await axios.post(`${apiBaseUrl}/ownership/transfer`, {
+          serialNumber,
+          ownerName: buyerName.trim(),
+          ownerIdentifier: buyerIdentifier.trim(),
+          actor: auth?.username || auth?.user || "retailer",
+        });
+      } catch (e) {
+        console.error("Failed to record consumer ownership:", e);
+      }
+    }
   };
 
   const handleBack = () => {
@@ -205,16 +282,60 @@ const UpdateProductDetails = () => {
               <select
                 className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:border-white/50 transition duration-200"
                 value={isSold}
-                onChange={(e) => setIsSold(e.target.value === "true")}
+                onChange={(e) => {
+                  const val = e.target.value === "true";
+                  setIsSold(val);
+                  if (!val) {
+                    setBuyerName("");
+                    setBuyerIdentifier("");
+                    setFormError("");
+                  }
+                }}
               >
                 <option value="false">false</option>
                 <option value="true">true</option>
               </select>
             </div>
           )}
+          {isSold && (
+            <div className="space-y-4">
+              <div className="text-white/90 text-sm">
+                Enter consumer details (required)
+              </div>
+              <div>
+                <label className="block text-white mb-1 font-semibold">
+                  Consumer Full Name
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
+                  placeholder="e.g., Jane Doe"
+                  value={buyerName}
+                  onChange={(e) => setBuyerName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-white mb-1 font-semibold">
+                  Consumer Identifier
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
+                  placeholder="Phone / Email / Last 4 of ID"
+                  value={buyerIdentifier}
+                  onChange={(e) => setBuyerIdentifier(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
           {loading && (
             <div className="text-center text-white/80 text-sm mb-4">
               {loading}
+            </div>
+          )}
+          {formError && (
+            <div className="text-center text-red-200 text-sm mb-2">
+              {formError}
             </div>
           )}
           <button

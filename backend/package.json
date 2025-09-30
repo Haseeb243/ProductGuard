@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "joi": "^17.12.1",
     "bcrypt": "^6.0.0",
     "body-parser": "^1.20.1",
     "cors": "^2.8.5",

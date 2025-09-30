@@ -10,19 +10,7 @@ const FakeProduct = () => {
   const qrData = location.state?.qrData;
 
   useEffect(() => {
-    // Log the fake product scan
-    if (qrData) {
-      const arr = qrData.split(",");
-      const serialNumber = arr[1]; // Get serial number from QR data
-      axios
-        .post("/scan-product", {
-          serialNumber: serialNumber,
-          username: "anonymous", // or get from auth context if user is logged in
-          location: "scan location",
-          isAuthentic: false,
-        })
-        .catch((err) => console.error("Error logging scan:", err));
-    }
+    // Scan is logged by /verification/scan already
   }, [qrData]);
 
   const handleBack = () => {

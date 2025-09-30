@@ -74,6 +74,7 @@ const UpdateProduct = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const qrData = location.state?.qrData;
+  const flaggedSuspicious = Boolean(location.state?.isSuspicious);
 
   console.log("qrData", qrData);
 
@@ -207,7 +208,9 @@ const UpdateProduct = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    navigate("/update-product-details", { state: { qrData } });
+    navigate("/update-product-details", {
+      state: { qrData, isSuspicious: flaggedSuspicious },
+    });
   };
 
   return (

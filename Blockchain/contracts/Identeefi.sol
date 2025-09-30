@@ -6,6 +6,9 @@ import "hardhat/console.sol";
 contract Identeefi {
     address public owner; 
 
+    event ProductRegistered(string indexed serialNumber, string name, string brand, string actor, string location, string timestamp);
+    event ProductHistoryAdded(string indexed serialNumber, string actor, string location, string timestamp, bool isSold);
+
     struct Product {
         string name;
         string serialNumber;
@@ -38,6 +41,7 @@ contract Identeefi {
         p.historySize = 0;
 
         addProductHistory(_serialNumber,_actor, _location, _timestamp, false);
+        emit ProductRegistered(_serialNumber, _name, _brand, _actor, _location, _timestamp);
     }
 
     function addProductHistory(string memory _serialNumber, string memory _actor, string memory _location, string memory _timestamp, bool _isSold) public {
@@ -48,6 +52,8 @@ contract Identeefi {
         console.log("i1: %s", p.historySize);
         console.log("Product History added: %s", p.history[p.historySize].actor);
         console.log("Product : %s", p.name);
+
+        emit ProductHistoryAdded(_serialNumber, _actor, _location, _timestamp, _isSold);
     }
 
     function getProduct(string memory _serialNumber) public view returns (string memory, string memory, string memory, string memory, string memory, ProductHistory[] memory) {

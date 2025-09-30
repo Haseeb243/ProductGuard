@@ -90,52 +90,57 @@ const AddProduct = () => {
   }, []);
 
   useEffect(() => {
-    if (googleMapsApiKey) {
-      Geocode.setApiKey(googleMapsApiKey);
-    }
-    if (
-      manuLatitude !== "" &&
-      manuLongtitude !== "" &&
-      !isNaN(Number(manuLatitude)) &&
-      !isNaN(Number(manuLongtitude))
-    ) {
-      Geocode.fromLatLng(manuLatitude, manuLongtitude).then(
-        (response) => {
-          const address = response.results[0].formatted_address;
-          let city, state, country;
-          for (
-            let i = 0;
-            i < response.results[0].address_components.length;
-            i++
-          ) {
-            for (
-              let j = 0;
-              j < response.results[0].address_components[i].types.length;
-              j++
-            ) {
-              switch (response.results[0].address_components[i].types[j]) {
-                case "locality":
-                  city = response.results[0].address_components[i].long_name;
-                  break;
-                case "administrative_area_level_1":
-                  state = response.results[0].address_components[i].long_name;
-                  break;
-                case "country":
-                  country = response.results[0].address_components[i].long_name;
-                  break;
-              }
-            }
+    const doReverse = async () => {
+      if (
+        manuLatitude === "" ||
+        manuLongtitude === "" ||
+        isNaN(Number(manuLatitude)) ||
+        isNaN(Number(manuLongtitude))
+      ) {
+        return;
+      }
+      // Try Google first if key is available
+      if (googleMapsApiKey) {
+        try {
+          Geocode.setApiKey(googleMapsApiKey);
+          const response = await Geocode.fromLatLng(
+            manuLatitude,
+            manuLongtitude
+          );
+          const address = response.results?.[0]?.formatted_address;
+          if (address) {
+            setManuLocation(address.replace(/,/g, ";"));
+            return;
           }
-          setManuLocation(address.replace(/,/g, ";"));
-          console.log("city, state, country: ", city, state, country);
-          console.log("address:", address);
-        },
-        (error) => {
-          console.error(error);
+        } catch (e) {
+          console.warn("Google reverse geocoding failed, trying 3rd-party:", e);
         }
-      );
-    }
-  }, [manuLatitude, manuLongtitude]);
+      }
+      // 3rd party: BigDataCloud (no API key required)
+      try {
+        const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(
+          manuLatitude
+        )}&longitude=${encodeURIComponent(manuLongtitude)}&localityLanguage=en`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const data = await resp.json();
+          const parts = [
+            data.locality || data.city || data.principalSubdivision,
+            data.countryName,
+          ].filter(Boolean);
+          if (parts.length) {
+            setManuLocation(parts.join(", ").replace(/,/g, ";"));
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("BigDataCloud reverse geocoding failed:", e);
+      }
+      // Fallback: coordinates string
+      setManuLocation(`lat:${manuLatitude};lon:${manuLongtitude}`);
+    };
+    doReverse();
+  }, [manuLatitude, manuLongtitude, googleMapsApiKey]);
 
   const generateQRCode = async (serialNumber) => {
     // const qrCode = await productContract.getProduct(serialNumber);
@@ -249,21 +254,49 @@ const AddProduct = () => {
     }
   };
 
-  const getCurrentTimeLocation = () => {
+  const getCurrentTimeLocation = async () => {
     setManuDate(dayjs().unix());
-    navigator.geolocation.getCurrentPosition(function (position) {
-      setManuLatitude(position.coords.latitude);
-      setManuLongtitude(position.coords.longitude);
-    });
+    try {
+      // Prefer Permissions API when available to surface better UX
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const status = await navigator.permissions.query({
+            name: "geolocation",
+          });
+          if (status.state === "denied") {
+            alert(
+              "Location access is blocked. Please enable location permissions for this site and try again."
+            );
+          }
+        } catch {}
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setManuLatitude(position.coords.latitude);
+          setManuLongtitude(position.coords.longitude);
+        },
+        (error) => {
+          console.warn("Geolocation error:", error?.message || error);
+          alert(
+            "Unable to access device location. Please enable location services and permissions, then try again."
+          );
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } catch (e) {
+      console.warn("getCurrentTimeLocation failed:", e);
+    }
   };
 
-  const addProductDB = async (e) => {
+  const addProductDB = async () => {
     try {
       const profileData = JSON.stringify({
         serialNumber: serialNumber,
         name: name,
         brand: brand,
         username: auth?.username || auth?.user || null,
+        // Ensure backend email QR includes contract address
+        contractAddress: CONTRACT_ADDRESS,
       });
 
       const res = await axios.post(`${apiBaseUrl}/addproduct`, profileData, {
@@ -298,11 +331,12 @@ const AddProduct = () => {
     const unique = await checkUnique();
     if (unique) {
       await uploadImage(image);
-      await addProductDB(e);
       setLoading(
-        "Please pay the transaction fee to update the product details..."
+        "Please pay the transaction fee to register the product on-chain..."
       );
-      await registerProduct(e);
+      await registerProduct(e); // waits for transaction to be mined
+      // Only after successful on-chain registration, persist to DB and trigger email with full QR payload
+      await addProductDB();
     }
     setIsUnique(true);
   };

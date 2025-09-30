@@ -17,9 +17,14 @@ const emailTemplates = {
   productRegistration: {
     subject: "Product Registration Confirmation",
     template: (data) => {
-      const payload = `${
-        process.env.CONTRACT_ADDRESS ? process.env.CONTRACT_ADDRESS + "," : ""
-      }${data.serialNumber}`;
+      // Ensure QR includes contract address and serial number
+      // Use backend CONTRACT_ADDRESS if set; otherwise, try provided data.contractAddress; else fallback to serial-only
+      // Prefer provided contractAddress from the actual on-chain call; fallback to env
+      const contractAddr =
+        data.contractAddress || process.env.CONTRACT_ADDRESS || null; // Ensure contract address is set
+      const payload = contractAddr
+        ? `${contractAddr},${data.serialNumber}`
+        : `${data.serialNumber}`;
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
         payload
       )}`;

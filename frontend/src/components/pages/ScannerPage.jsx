@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import useAuth from "../../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { useConfig } from "../../context/ConfigContext";
+import axios from "../../api/axios";
 
 const ScannerPage = () => {
   const { contractAddress } = useConfig();
-  const CONTRACT_ADDRESS = contractAddress;
+  const CONTRACT_ADDRESS = contractAddress; // still available for debugging
   const [qrData, setQrData] = useState("");
   const { auth } = useAuth();
   const navigate = useNavigate();
@@ -21,19 +22,42 @@ const ScannerPage = () => {
   useEffect(() => {
     if (!qrData) return;
 
-    const arr = qrData.split(",");
-    const contractAddress = arr[0];
-    if (contractAddress) {
-      if (contractAddress == CONTRACT_ADDRESS) {
-        if (auth.role === "supplier" || auth.role === "retailer") {
-          navigate("/update-product", { state: { qrData } });
+    const verify = async () => {
+      try {
+        const res = await axios.post("/verification/scan", {
+          qrData,
+          username: auth?.username || auth?.user || "anonymous",
+          location: null,
+        });
+        const { isAuthentic, isSuspicious } = res.data || {};
+
+        if (isAuthentic) {
+          if (auth.role === "supplier" || auth.role === "retailer") {
+            navigate("/update-product", { state: { qrData, isSuspicious } });
+          } else {
+            navigate("/authentic-product", { state: { qrData, isSuspicious } });
+          }
         } else {
-          navigate("/authentic-product", { state: { qrData } });
+          navigate("/fake-product", { state: { qrData, isSuspicious } });
         }
-      } else {
-        navigate("/fake-product", { state: { qrData } });
+      } catch (e) {
+        console.error("Verification failed:", e);
+        // fallback to old behavior if server verification fails
+        const arr = qrData.split(",");
+        const addr = arr?.[0];
+        if (addr === CONTRACT_ADDRESS) {
+          if (auth.role === "supplier" || auth.role === "retailer") {
+            navigate("/update-product", { state: { qrData } });
+          } else {
+            navigate("/authentic-product", { state: { qrData } });
+          }
+        } else {
+          navigate("/fake-product", { state: { qrData } });
+        }
       }
-    }
+    };
+
+    verify();
   }, [qrData]);
 
   const handleBack = () => {
