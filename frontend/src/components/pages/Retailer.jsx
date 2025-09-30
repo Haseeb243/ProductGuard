@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import LogoutIcon from "@mui/icons-material/Logout";
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import QrCodeScannerOutlinedIcon from "@mui/icons-material/QrCodeScannerOutlined";
+import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import WalletOutlinedIcon from "@mui/icons-material/WalletOutlined";
 import bgImg from "../../img/bg.png";
 import logoImg from "../../img/logo.png";
@@ -107,6 +108,13 @@ const Retailer = () => {
                 <button className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg shadow-cyan-500/25 transition-all duration-200 transform hover:scale-[1.02]">
                   <QrCodeScannerOutlinedIcon className="h-5 w-5" />
                   Update Product
+                </button>
+              </Link>
+
+              <Link to="/transparency" className="block">
+                <button className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 shadow-lg shadow-emerald-400/20 transition-all duration-200 transform hover:scale-[1.02]">
+                  <InsightsOutlinedIcon className="h-5 w-5" />
+                  Transparency Dashboard
                 </button>
               </Link>
 

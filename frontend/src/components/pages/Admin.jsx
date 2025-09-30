@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import { LinkButton } from "../LinkButton";
 import PersonAddAltIcon from "@mui/icons-material/PersonAddAlt";
@@ -97,6 +97,41 @@ const AuditIcon = () => (
     />
   </svg>
 );
+const TransparencyIcon = () => (
+  <svg
+    className="w-5 h-5 mr-2"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 3l8.5 4.5v9L12 21l-8.5-4.5v-9L12 3z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 7.5l5.5 3v3l-5.5 3-5.5-3v-3l5.5-3z"
+    />
+  </svg>
+);
+const PulseIcon = () => (
+  <svg
+    className="w-5 h-5 mr-2"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M3 13h3l2-7 4 14 2-7h5"
+    />
+  </svg>
+);
 
 const SidebarLink = ({ icon, label, to, active }) => (
   <Link
@@ -112,6 +147,16 @@ const SidebarLink = ({ icon, label, to, active }) => (
 
 const SIDEBAR_LINKS = [
   { icon: <DashboardIcon />, label: "Dashboard", to: "/admin" },
+  {
+    icon: <PulseIcon />,
+    label: "Analytics",
+    to: "/analytics",
+  },
+  {
+    icon: <TransparencyIcon />,
+    label: "Transparency",
+    to: "/transparency",
+  },
   {
     icon: <AuditIcon />,
     label: "Audit Logs",
@@ -146,6 +191,14 @@ const SIDEBAR_LINKS = [
 
 const Admin = () => {
   const { apiBaseUrl } = useConfig();
+  const location = useLocation();
+  const currentPath = `${location.pathname}${location.search}`;
+  const isActive = (link) => {
+    if (link.to.includes("?")) {
+      return currentPath === link.to;
+    }
+    return location.pathname === link.to;
+  };
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -156,6 +209,10 @@ const Admin = () => {
     logins: [],
     activitySummary: [],
   });
+
+  useEffect(() => {
+    setSidebarOpen(true);
+  }, []);
 
   useEffect(() => {
     fetchAnalytics();
@@ -239,11 +296,7 @@ const Admin = () => {
         </div>
         <nav className="flex-1 px-2 py-4 space-y-2">
           {SIDEBAR_LINKS.map((link) => (
-            <SidebarLink
-              key={link.label}
-              {...link}
-              active={link.to === "/admin"}
-            />
+            <SidebarLink key={link.label} {...link} active={isActive(link)} />
           ))}
         </nav>
       </aside>
@@ -268,11 +321,7 @@ const Admin = () => {
           </div>
           <nav className="flex-1 px-2 py-4 space-y-2">
             {SIDEBAR_LINKS.map((link) => (
-              <SidebarLink
-                key={link.label}
-                {...link}
-                active={link.to === "/admin"}
-              />
+              <SidebarLink key={link.label} {...link} active={isActive(link)} />
             ))}
           </nav>
         </aside>
@@ -302,7 +351,7 @@ const Admin = () => {
         {/* KPI Cards */}
         <main className="flex-1 p-6 space-y-8">
           {/* Dashboard Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
             <div className="rounded-2xl shadow-lg p-6 flex items-center bg-gradient-to-tr from-blue-400/80 to-indigo-600/80 backdrop-blur-lg border border-white/10">
               <PersonAddAltIcon
                 sx={{
@@ -351,6 +400,42 @@ const Admin = () => {
                   buttonSize="large"
                 >
                   Manage Accounts
+                </LinkButton>
+              </div>
+            </div>
+            <div className="rounded-2xl shadow-lg p-6 flex items-center bg-gradient-to-tr from-cyan-500/80 to-sky-400/80 backdrop-blur-lg border border-white/10">
+              <TransparencyIcon />
+              <div className="flex-1 ml-1">
+                <h2 className="text-xl font-bold text-white mb-2">
+                  Transparency Reports
+                </h2>
+                <p className="text-white/80 mb-4">
+                  Monitor blockchain activity and product lineage in real time.
+                </p>
+                <LinkButton
+                  to="/transparency"
+                  buttonStyle="long"
+                  buttonSize="large"
+                >
+                  View Dashboard
+                </LinkButton>
+              </div>
+            </div>
+            <div className="rounded-2xl shadow-lg p-6 flex items-center bg-gradient-to-tr from-emerald-500/80 via-teal-500/80 to-blue-500/70 backdrop-blur-lg border border-white/10">
+              <PulseIcon />
+              <div className="flex-1 ml-1">
+                <h2 className="text-xl font-bold text-white mb-2">
+                  Analytics Intelligence
+                </h2>
+                <p className="text-white/80 mb-4">
+                  Explore geo hotspots, suspicious scans, and inventory flows.
+                </p>
+                <LinkButton
+                  to="/analytics"
+                  buttonStyle="long"
+                  buttonSize="large"
+                >
+                  Open Analytics
                 </LinkButton>
               </div>
             </div>

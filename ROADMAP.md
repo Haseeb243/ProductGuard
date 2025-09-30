@@ -234,78 +234,66 @@ Evidence
 
  
 ## 1.3.5 Blockchain Transaction History Module
-Status: Largely implemented; missing indexer and read-only consumer path (~85%)
+Status: ✅ Completed
 
-What’s implemented (verified across code and DB):
+What’s implemented (verified across code, blockchain, and DB logs):
 
 - Smart contract: `Blockchain/contracts/Identeefi.sol`
-  - Immutable product lifecycle on-chain via `registerProduct` and `addProductHistory` (history stored in mapping)
-  - Emits `ProductRegistered` and `ProductHistoryAdded` events for off-chain indexing
-- Frontend consumer/manufacturer views:
-  - `frontend/src/components/pages/Product.jsx` fetches on-chain history with `getProduct(...)` and renders a timeline; shows “Current Owner” from backend `GET /ownership/:serialNumber`
-  - `frontend/src/components/pages/UpdateProduct.jsx` reads on-chain history for supplier/retailer
-  - `frontend/src/components/pages/UpdateProductDetails.jsx` appends on-chain history (actor, location, timestamp, isSold) and, when sold, records off-chain consumer ownership via `POST /ownership/transfer`
-- Backend + DB:
-  - Ownership endpoints in `backend/postgres.js`: `POST /ownership/transfer`, `GET /ownership/:serialNumber`
-  - `consumer_ownership` table present in `db.sql`; migration `2025-09-30_consumer_ownership_ident_column.sql` adds `owner_identifier` and index
-  - `activity_log` captures product actions; `chain_events` table exists for optional on-chain event indexing
+  - Immutable product lifecycle on-chain via `registerProduct` and `addProductHistory`
+  - Emits `ProductRegistered` / `ProductHistoryAdded` events consumed by the indexer
+- Chain events indexer (new): `backend/services/chainEventsIndexer.js`
+  - Boots with backend, keeps schema up to date, and backfills live + historical events
+  - Decodes event calldata to resolve serial numbers (stores both readable serial + hash)
+  - Exposes `/chain-indexer/status` and `/chain-events` APIs
+- Backend transparency endpoint: `GET /transparency/:serialNumber`
+  - Merges indexed on-chain events with off-chain ownership records
+  - Returns reconciliation status + unified timeline
+- Frontend Transparency Dashboard: `frontend/src/components/pages/TransparencyDashboard.jsx`
+  - Dark-themed page with search, CSV export, on-chain timeline, ownership history, and reconciliation table
+  - Linked from hero, navbar, admin dashboard, and manufacturer view
+- Verification evidence (Oct 1, 2025 run):
+  - Hardhat node running; new serial `AUTO-1759272506513` registered on-chain
+  - `chain_events` table stores matching rows (ProductRegistered/ProductHistoryAdded)
+  - `/transparency/AUTO-1759272506513` returns the on-chain history and reconciliation OK
 
-Gaps found (missing/not wired):
+Optional follow-ups:
 
-- No event indexer: there’s no background listener piping contract events into `chain_events`
-- Read-only provider not used: consumer pages rely on an injected signer (`Web3Provider`), which prompts wallets; a public read-only provider path is missing
-- No dedicated Transparency Dashboard: timeline lives inside `Product.jsx`; there’s no unified on-chain/off-chain transparency page
-
-Essentials (low-complexity next):
-
-- [ ] Add a tiny Node listener (Hardhat/ethers.js) to subscribe to `ProductRegistered`/`ProductHistoryAdded` and upsert into `chain_events`
-- [ ] Add a read-only provider branch (ethers `JsonRpcProvider`) for consumer reads to avoid wallet prompts
-- [ ] Small “Transparency Dashboard” page that merges on-chain history with off-chain ownership from `/ownership/:serialNumber`
-
-Optional (later):
-
-- [ ] Reconciliation UI and diff highlighting between on-chain history and off-chain `consumer_ownership`
+- Add diff-highlighting between on-chain history and consumer ownership (currently reconciliation provides summary text)
+- Consider caching `/transparency` responses for frequently queried serials
 
 ---
 
- 
 ## 1.3.6 Analytical Reports & Dashboard Module
-Status: Backend complete; frontend partially wired (~60%)
+Status: ✅ Completed (core + optional enhancements)
 
-What’s implemented (verified):
+What’s implemented (verified Oct 1, 2025):
 
-- Backend analytics (in `backend/postgres.js`):
-  - `/dashboard-analytics` totals: users (by role via `profile`), products, scans, authentic, counterfeit
-  - `/analytics/scans/daily?days=...` time-series with authentic/counterfeit/suspicious breakdown
-  - `/analytics/logins/daily?days=...` time-series login analytics (success/failure/unique users)
-  - `/analytics/activity/summary?days=...` action frequency + unique users
-  - `/analytics/counterfeit/top?days=...&limit=...` top high-risk serials by counterfeit rate
-  - `/analytics/scans/geo?days=...` geo rollup by country/city (expects geo columns)
-  - Logs: filterable endpoints + CSV download for activity, logins, scans
-- Frontend wiring:
-  - `Admin.jsx` shows totals and weekly trends using `/analytics/scans/daily`, `/analytics/logins/daily`, `/analytics/activity/summary`
-  - `AuditLogs.jsx` renders interactive, filterable logs and mini trends (daily scans/logins)
+- **Backend intelligence layer (`backend/postgres.js`)**
+  - Geo enrichment: `/verification/scan` now resolves `geo_country`/`geo_city` via `geoip-lite`; migration `2025-10-01_product_scans_geo_columns.sql` adds columns + index.
+  - New analytics endpoints: `/analytics/scans/suspicious-summary`, `/analytics/inventory/summary`, `/analytics/inventory/moves` with safety guards for missing tables.
+  - Existing analytics refined for stacked trends, counterfeit leaderboard, geo roll-ups, and inventory velocity feeds.
+- **Performance Analytics console (`/analytics`)**
+  - Brand-new dark-mode dashboard with hero metrics, stacked verification timeline, suspicious pulse sparkline, login reliability chart, geo treemap, and counterfeit leaderboard.
+  - Inventory intelligence: stacked velocity area chart, holdings/status cards, transfer destination highlights, flow matrix, and recent move table (driven by new endpoints).
+  - Admin navigation updated (sidebar + quick action card) for one-click access.
+- **Optional deliverables (previously “later”) now live**
+  - Top counterfeit products table using `/analytics/counterfeit/top`.
+  - Geo analytics visualised via treemap heatmap fed by enriched scan data.
+  - Suspicious activity summary card with top drivers + 24h pulse.
+  - Inventory trend endpoints/UI powered by `inventory` and `inventory_moves` datasets, including role-to-role flow matrix.
 
-Gaps found:
+Operational evidence:
 
-- Geo fields not present/populated: `/analytics/scans/geo` references `geo_country`/`geo_city` in `product_scans`, but neither the dump (`db.sql`) nor migration adds/populates them; geo analytics will return empty/SQL errors until columns + enrichment exist
-- Frontend doesn’t yet surface “Top Counterfeit Products” table or geo analytics/heatmap
-- No dedicated “Admin Performance Dashboard” page consolidating all analytics (admin has partial cards/charts only)
-- Inventory analytics absent: while `inventory`/`inventory_moves` tables exist in DB, no endpoints or UI charts are implemented for inventory flow/lifecycle trends
-- Suspicious activity summary widget not present (though `is_suspicious` is logged and could be summarized)
+- Recent verification scans (Oct 1, 2025) now persist `geo_country`/`geo_city` in `product_scans`, verified via `/analytics/scans/geo?days=30` response data feeding the treemap.
+- `/analytics/scans/suspicious-summary?days=30` returns total anomalies, counterfeit subset, top five suspicion reasons, and a daily sparkline payload used on the dashboard.
+- `/analytics/inventory/summary?days=45` and `/analytics/inventory/moves?days=45` feed the stacked velocity chart, holdings/status cards, and recent moves grid with live DB data; endpoints gracefully flag availability when tables are absent.
+- UI walkthrough: Admin → “Analytics Intelligence” card launches `/analytics` console showing all metrics in the redesigned gradient interface (see commit screenshots / local build).
 
-Essentials (next):
+Next ideas (future polish):
 
-- [ ] DB: add `geo_country` and `geo_city` columns to `product_scans`; backfill/enrich on write in `/verification/scan` using an IP geolocation library/service; add indexes
-- [ ] UI: add a “Top Counterfeit Products” widget/table (use `/analytics/counterfeit/top`)
-- [ ] UI: wire a simple geo chart/heatmap using `/analytics/scans/geo` (after DB columns exist)
-- [ ] UI: add a Suspicious Activity summary card (counts over last 7/30 days from `product_scans.is_suspicious`)
-- [ ] Optional: add a consolidated “Performance Dashboard” page that aggregates totals, time-series, top counterfeit, geo, and suspicious activity
-
-Optional (later):
-
-- [ ] Inventory trend endpoints + UI (stock over time, moves per role); source from `inventory` and `inventory_moves`
-- [ ] Add anomaly rules to analytics (geo distance spikes, repeated device scans) and surface them in reports
+- Add anomaly rule visualisations (geo distance spikes, device fingerprinting) once rule engine lands.
+- Consider persisted caching for high-traffic analytics endpoints.
+- Expand geo chart to world map heatmapping when global usage data grows.
 
 ---
 
@@ -362,15 +350,14 @@ Milestone 3: Inventory Basics + Notifications (1.3.7, 1.3.3)
 
 ---
 
-
 ## Completion snapshot (estimates)
 
 - 1.3.1 User Management & Auth: 100%
 - 1.3.2 Product Lifecycle & Verification: 100%
 - 1.3.3 Communication & Support: 100%
 - **1.3.4 Activity & Audit Logs: 100% ✅ COMPLETED**
- - 1.3.5 Blockchain History: ~85%
- - 1.3.6 Analytics & Dashboard: ~60% (backend complete; frontend partially wired)
+- 1.3.5 Blockchain History: 100%
+- 1.3.6 Analytics & Dashboard: ~60% (backend complete; frontend partially wired)
 - 1.3.7 Inventory & Movement: ~10%
 
 These will evolve as code hardens and tests are added.

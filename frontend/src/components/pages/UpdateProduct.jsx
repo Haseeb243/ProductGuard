@@ -60,13 +60,14 @@ const UpdateProduct = () => {
   const [imageName, setImageName] = useState("");
   const [history, setHistory] = useState([]);
   const [isSold, setIsSold] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const [image, setImage] = useState({
     file: [],
     filepreview: null,
   });
 
-  const { apiBaseUrl, contractAddress } = useConfig();
+  const { apiBaseUrl, contractAddress, publicRpcUrl } = useConfig();
   const CONTRACT_ADDRESS = contractAddress;
   const CONTRACT_ABI = abi.abi;
 
@@ -82,7 +83,7 @@ const UpdateProduct = () => {
     console.log("useEffect 1");
 
     findMetaMaskAccount().then((account) => {
-      if (account !== null) {
+      if (account) {
         setCurrentAccount(account);
       }
     });
@@ -100,41 +101,45 @@ const UpdateProduct = () => {
   };
 
   const handleScan = async (qrData) => {
-    const data = qrData.split(",");
-    const contractAddress = data[0];
-    setSerialNumber(data[1]);
+    const parts = qrData.split(",");
+    const scannedContract = parts[0];
+    const scannedSerial = parts[1];
+    setSerialNumber(scannedSerial);
 
-    console.log("contract address", contractAddress);
-    console.log("serial number", data[1]);
+    if (!CONTRACT_ADDRESS) {
+      setLoadError("Contract address is not configured.");
+      return;
+    }
 
-    if (contractAddress === CONTRACT_ADDRESS) {
-      try {
-        const { ethereum } = window;
+    if (scannedContract !== CONTRACT_ADDRESS) {
+      setLoadError("Scanned QR does not match the configured contract.");
+      return;
+    }
 
-        if (ethereum) {
-          const provider = new ethers.providers.Web3Provider(ethereum);
-          const signer = provider.getSigner();
-          const productContract = new ethers.Contract(
-            CONTRACT_ADDRESS,
-            CONTRACT_ABI,
-            signer
-          );
+    try {
+      const { ethereum } = window;
+      let provider;
 
-          const product = await productContract.getProduct(data[1].toString());
-
-          // setProductData(product.toString())
-
-          console.log("Retrieved product...", product);
-          setData(product.toString());
-        } else {
-          console.log("Ethereum object doesn't exist!");
-          alert(
-            "Ethereum object doesn't exist! Please connect your wallet first!"
-          );
-        }
-      } catch (error) {
-        console.log(error);
+      if (ethereum) {
+        provider = new ethers.providers.Web3Provider(ethereum);
+      } else {
+        provider = new ethers.providers.JsonRpcProvider(publicRpcUrl);
       }
+
+      const productContract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        CONTRACT_ABI,
+        provider
+      );
+
+      const product = await productContract.getProduct(
+        scannedSerial.toString()
+      );
+      setLoadError("");
+      setData(product.toString());
+    } catch (error) {
+      console.log(error);
+      setLoadError("Unable to load product details from the blockchain.");
     }
   };
 
@@ -259,6 +264,11 @@ const UpdateProduct = () => {
         {loading && (
           <div className="text-center text-white/80 text-sm mb-4">
             {loading}
+          </div>
+        )}
+        {loadError && (
+          <div className="text-center text-red-200 text-sm mb-4">
+            {loadError}
           </div>
         )}
         <button

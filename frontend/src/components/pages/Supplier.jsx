@@ -110,6 +110,12 @@ const Supplier = () => {
                 </button>
               </Link>
 
+              <Link to="/transparency" className="block">
+                <button className="w-full flex justify-center py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 shadow-lg shadow-emerald-400/20 transition-all duration-200 transform hover:scale-[1.02]">
+                  Transparency Dashboard
+                </button>
+              </Link>
+
               {!currentAccount && (
                 <button
                   onClick={connectWallet}

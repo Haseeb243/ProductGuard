@@ -22,6 +22,8 @@ import AuthenticProduct from "./components/pages/AuthenticProduct";
 import FakeProduct from "./components/pages/FakeProduct";
 import UpdateProductDetails from "./components/pages/UpdateProductDetails";
 import SupportDashboard from "./components/SupportDashboard";
+import TransparencyDashboard from "./components/pages/TransparencyDashboard";
+import AnalyticsDashboard from "./components/pages/AnalyticsDashboard";
 
 function App() {
   return (
@@ -32,6 +34,11 @@ function App() {
         <Route exact path="/login" element={<Login />}></Route>
         <Route exact path="/scanner" element={<ScannerPage />}></Route>
         <Route exact path="/product" element={<Product />}></Route>
+        <Route
+          exact
+          path="/transparency"
+          element={<TransparencyDashboard />}
+        ></Route>
         <Route
           exact
           path="/authentic-product"
@@ -53,6 +60,11 @@ function App() {
             exact
             path="/support-dashboard"
             element={<SupportDashboard />}
+          ></Route>
+          <Route
+            exact
+            path="/analytics"
+            element={<AnalyticsDashboard />}
           ></Route>
         </Route>
 

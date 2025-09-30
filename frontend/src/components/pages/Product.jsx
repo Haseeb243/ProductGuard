@@ -51,8 +51,9 @@ const Product = () => {
   const [isSold, setIsSold] = useState(false);
   const [image, setImage] = useState({ file: [], filepreview: null });
   const [owner, setOwner] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
-  const { apiBaseUrl, contractAddress } = useConfig();
+  const { apiBaseUrl, contractAddress, publicRpcUrl } = useConfig();
   const CONTRACT_ADDRESS = contractAddress; // Update to your deployed address
   const CONTRACT_ABI = abi.abi;
 
@@ -64,7 +65,7 @@ const Product = () => {
   useEffect(() => {
     console.log("useEffect 1");
     findMetaMaskAccount().then((account) => {
-      if (account !== null) {
+      if (account) {
         setCurrentAccount(account);
       }
     });
@@ -82,53 +83,57 @@ const Product = () => {
   };
 
   const handleScan = async (qrData) => {
-    const data = qrData.split(",");
-    const contractAddress = data[0];
-    setSerialNumber(data[1]);
+    const parts = qrData.split(",");
+    const scannedContract = parts[0];
+    const scannedSerial = parts[1];
+    setSerialNumber(scannedSerial);
 
-    console.log("contract address", contractAddress);
-    console.log("serial number", data[1]);
+    if (!CONTRACT_ADDRESS) {
+      setLoadError("Contract address is not configured.");
+      return;
+    }
 
-    if (contractAddress === CONTRACT_ADDRESS) {
-      try {
-        const { ethereum } = window;
+    if (scannedContract !== CONTRACT_ADDRESS) {
+      setLoadError("Scanned QR does not match the configured contract.");
+      return;
+    }
 
-        if (ethereum) {
-          const provider = new ethers.providers.Web3Provider(ethereum);
-          const signer = provider.getSigner();
-          const productContract = new ethers.Contract(
-            CONTRACT_ADDRESS,
-            CONTRACT_ABI,
-            signer
-          );
+    try {
+      const { ethereum } = window;
+      let provider;
 
-          console.log("here");
-
-          const product = await productContract.getProduct(data[1].toString());
-
-          // setProductData(product.toString())
-          // setToUpdate(true);
-
-          console.log("Retrieved product...", product);
-          setData(product.toString());
-          // Fetch current owner details from backend
-          try {
-            const resp = await fetch(`${apiBaseUrl}/ownership/${data[1]}`);
-            if (resp.ok) {
-              const body = await resp.json();
-              if (body?.success && body?.owner) {
-                setOwner(body.owner);
-              }
-            }
-          } catch (e) {
-            console.warn("Failed to fetch owner details:", e);
-          }
-        } else {
-          console.log("Ethereum object doesn't exist!");
-        }
-      } catch (error) {
-        console.log(error);
+      if (ethereum) {
+        provider = new ethers.providers.Web3Provider(ethereum);
+      } else {
+        provider = new ethers.providers.JsonRpcProvider(publicRpcUrl);
       }
+
+      const productContract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        CONTRACT_ABI,
+        provider
+      );
+
+      const product = await productContract.getProduct(
+        scannedSerial.toString()
+      );
+      setLoadError("");
+      setData(product.toString());
+
+      try {
+        const resp = await fetch(`${apiBaseUrl}/ownership/${scannedSerial}`);
+        if (resp.ok) {
+          const body = await resp.json();
+          if (body?.success && body?.owner) {
+            setOwner(body.owner);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch owner details:", e);
+      }
+    } catch (error) {
+      console.log(error);
+      setLoadError("Unable to read product details from the blockchain.");
     }
   };
 
@@ -264,6 +269,11 @@ const Product = () => {
             </div>
           </div>
         </div>
+        {loadError && (
+          <div className="mb-4 px-3 py-2 rounded bg-red-500/80 text-white text-sm text-center">
+            {loadError}
+          </div>
+        )}
         <button
           type="button"
           onClick={handleBack}

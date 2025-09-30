@@ -198,6 +198,11 @@ cd Blockchain
 npx hardhat run scripts/deploy.js --network localhost
 ```
 
+## Documentation
+
+- [1.3.5 Blockchain Transaction History Guide](docs/1.3.5-blockchain-transaction-history.md)
+- [1.3.6 Analytical Reports & Dashboard Guide](docs/1.3.6-analytics-module-guide.md)
+
 The deploy script will print the Identeefi contract address, for example:
 
 ```text

@@ -7,6 +7,10 @@ const multer = require("multer");
 const { Parser } = require("json2csv");
 const emailService = require("./emailService");
 const chatService = require("./chatService");
+const {
+  startChainEventsIndexer,
+  fetchChainEvents,
+} = require("./services/chainEventsIndexer");
 const http = require("http");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -15,6 +19,7 @@ const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const crypto = require("crypto");
 const Joi = require("joi");
+const geoip = require("geoip-lite");
 require("dotenv").config();
 
 const app = express();
@@ -62,8 +67,101 @@ const client = new Client({
   password: process.env.PGPASSWORD || "postgres",
   database: process.env.PGDATABASE || "postgres",
 });
+const connectionPromise = client.connect();
+let chainIndexerController = null;
+let shuttingDown = false;
+let activeServer = null;
 
-client.connect();
+async function gracefulShutdown(signal) {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+
+  const timeout = setTimeout(() => {
+    console.error("[shutdown] Forced exit after timeout");
+    process.exit(1);
+  }, 10000);
+  timeout.unref();
+
+  console.log(`[shutdown] ${signal} received. Tearing down services...`);
+
+  try {
+    if (chainIndexerController?.stop) {
+      chainIndexerController.stop();
+      console.log("[shutdown] Chain indexer stopped");
+    }
+  } catch (err) {
+    console.error("[shutdown] Failed to stop chain indexer:", err.message);
+  }
+
+  const tasks = [];
+
+  if (io?.close) {
+    tasks.push(
+      new Promise((resolve) => {
+        io.close(() => {
+          console.log("[shutdown] Socket.IO server closed");
+          resolve();
+        });
+      })
+    );
+  }
+
+  if (activeServer?.close) {
+    tasks.push(
+      new Promise((resolve) => {
+        activeServer.close((err) => {
+          if (err) {
+            console.error("[shutdown] HTTP server close error:", err.message);
+          } else {
+            console.log("[shutdown] HTTP server closed");
+          }
+          resolve();
+        });
+      })
+    );
+  }
+
+  if (client) {
+    tasks.push(
+      client
+        .end()
+        .then(() => console.log("[shutdown] PostgreSQL connection closed"))
+        .catch((err) =>
+          console.error("[shutdown] PostgreSQL close error:", err.message)
+        )
+    );
+  }
+
+  try {
+    await Promise.allSettled(tasks);
+  } finally {
+    clearTimeout(timeout);
+    console.log("[shutdown] Cleanup complete. Exiting.");
+    process.exit(0);
+  }
+}
+
+["SIGINT", "SIGTERM"].forEach((signal) => {
+  process.on(signal, () => gracefulShutdown(signal));
+});
+
+connectionPromise
+  .then(async () => {
+    console.log("Connected to PostgreSQL");
+    try {
+      chainIndexerController = await startChainEventsIndexer({
+        pgClient: client,
+        logger: console,
+      });
+    } catch (err) {
+      console.error("[chain-indexer] bootstrap failed:", err.message);
+    }
+  })
+  .catch((err) => {
+    console.error("Failed to connect to PostgreSQL:", err.message);
+  });
 
 // Initialize Socket.IO for chat (pass DB client for persistence)
 const io = chatService.initializeChat(server, corsOrigins, client);
@@ -1165,6 +1263,313 @@ app.get("/ownership/:serialNumber", async (req, res) => {
   }
 });
 
+const unixToIso = (seconds) => {
+  if (!seconds && seconds !== 0) return null;
+  if (!Number.isFinite(seconds)) return null;
+  try {
+    return new Date(seconds * 1000).toISOString();
+  } catch (err) {
+    return null;
+  }
+};
+
+const parseJsonPayload = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch (err) {
+    return { raw: value };
+  }
+};
+
+function normalizeChainEventRow(row) {
+  const payload = parseJsonPayload(row.payload);
+  const timestampUnixCandidate =
+    typeof payload.timestampUnix === "number"
+      ? payload.timestampUnix
+      : Number(payload.timestamp);
+
+  const timestampUnix = Number.isFinite(timestampUnixCandidate)
+    ? timestampUnixCandidate
+    : null;
+
+  return {
+    id: row.id,
+    serialNumber: row.serial_number,
+    eventName: row.event_name,
+    txHash: row.tx_hash,
+    payload,
+    blockNumber:
+      row.block_number !== null && row.block_number !== undefined
+        ? Number(row.block_number)
+        : null,
+    logIndex:
+      row.log_index !== null && row.log_index !== undefined
+        ? Number(row.log_index)
+        : null,
+    eventSignature: row.event_signature,
+    emittedAt: row.emitted_at,
+    createdAt: row.created_at,
+    timestampUnix,
+    timestampIso: timestampUnix ? unixToIso(timestampUnix) : row.emitted_at,
+  };
+}
+
+function buildReconciliation(onChainEvents, ownershipHistory) {
+  const issues = [];
+  let status = "ok";
+
+  const sortedOnChain = [...onChainEvents].sort((a, b) => {
+    const aBlock = a.blockNumber ?? -1;
+    const bBlock = b.blockNumber ?? -1;
+    if (aBlock !== bBlock) return aBlock - bBlock;
+    const aLog = a.logIndex ?? -1;
+    const bLog = b.logIndex ?? -1;
+    if (aLog !== bLog) return aLog - bLog;
+    return (a.id || 0) - (b.id || 0);
+  });
+
+  const latestSoldEvent = [...sortedOnChain]
+    .reverse()
+    .find((event) => event.payload && event.payload.isSold === true);
+
+  const currentOwner = ownershipHistory.find((owner) => !owner.transferred_at);
+
+  if (latestSoldEvent && !currentOwner) {
+    status = "warning";
+    issues.push(
+      "On-chain history marks the product as sold but no off-chain ownership record is active."
+    );
+  }
+
+  if (!latestSoldEvent && currentOwner) {
+    status = "warning";
+    issues.push(
+      "Off-chain ownership record exists but the latest on-chain history does not mark the product as sold."
+    );
+  }
+
+  if (latestSoldEvent && currentOwner) {
+    const onChainTs = latestSoldEvent?.payload?.timestampUnix;
+    const offChainTs = currentOwner?.acquired_at
+      ? Date.parse(currentOwner.acquired_at) / 1000
+      : null;
+
+    if (onChainTs && offChainTs) {
+      const deltaMinutes = Math.abs(onChainTs - offChainTs) / 60;
+      if (deltaMinutes > 120) {
+        status = "warning";
+        issues.push(
+          `On-chain sale timestamp differs from off-chain ownership record by roughly ${Math.round(
+            deltaMinutes
+          )} minutes.`
+        );
+      }
+    }
+  }
+
+  if (issues.length === 0) {
+    issues.push("On-chain events and off-chain ownership are in sync.");
+  }
+
+  const combinedTimeline = [
+    ...sortedOnChain.map((evt) => ({
+      type: "on-chain",
+      label: evt.eventName,
+      blockNumber: evt.blockNumber,
+      logIndex: evt.logIndex,
+      timestampUnix: evt.timestampUnix,
+      timestampIso: evt.timestampIso || evt.emittedAt,
+      payload: evt.payload,
+      txHash: evt.txHash,
+    })),
+    ...ownershipHistory.map((owner) => ({
+      type: owner.transferred_at ? "off-chain-transfer" : "off-chain",
+      label: owner.transferred_at
+        ? "Ownership transferred"
+        : "Ownership recorded",
+      ownerName: owner.owner_name,
+      ownerIdentifier: owner.owner_identifier,
+      acquiredAt: owner.acquired_at,
+      transferredAt: owner.transferred_at,
+      timestampUnix: owner.acquired_at
+        ? Date.parse(owner.acquired_at) / 1000
+        : null,
+      timestampIso: owner.acquired_at,
+    })),
+  ].sort((a, b) => {
+    const aTs = a.timestampUnix ?? -1;
+    const bTs = b.timestampUnix ?? -1;
+    if (aTs !== bTs) return aTs - bTs;
+    const aBlock = a.blockNumber ?? -1;
+    const bBlock = b.blockNumber ?? -1;
+    if (aBlock !== bBlock) return aBlock - bBlock;
+    const aLog = a.logIndex ?? -1;
+    const bLog = b.logIndex ?? -1;
+    return aLog - bLog;
+  });
+
+  return {
+    status,
+    issues,
+    latestSoldEvent,
+    currentOwner,
+    combinedTimeline,
+  };
+}
+
+app.get("/chain-indexer/status", (req, res) => {
+  try {
+    const status = chainIndexerController?.getStatus
+      ? chainIndexerController.getStatus()
+      : {
+          enabled: false,
+          status: "not-initialized",
+          updatedAt: new Date().toISOString(),
+        };
+
+    return res.json({ success: true, status });
+  } catch (err) {
+    console.error("/chain-indexer/status error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve chain indexer status",
+    });
+  }
+});
+
+app.get("/chain-events", async (req, res) => {
+  try {
+    const schema = Joi.object({
+      serialNumber: Joi.string().trim().optional(),
+      eventName: Joi.string().trim().optional(),
+      limit: Joi.number().integer().min(1).max(500).default(100),
+      offset: Joi.number().integer().min(0).default(0),
+      format: Joi.string().valid("json", "csv").default("json"),
+    });
+
+    const { value, error } = schema.validate(req.query, {
+      abortEarly: false,
+      stripUnknown: true,
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    const events = await fetchChainEvents(client, value);
+    const normalized = events.map(normalizeChainEventRow);
+
+    if (value.format === "csv") {
+      const parser = new Parser({
+        fields: [
+          "id",
+          "serialNumber",
+          "eventName",
+          "txHash",
+          "blockNumber",
+          "logIndex",
+          "timestampIso",
+          "timestampUnix",
+          "emittedAt",
+        ],
+      });
+      const csv = parser.parse(normalized);
+      res.header("Content-Type", "text/csv");
+      res.attachment("chain-events.csv");
+      return res.send(csv);
+    }
+
+    return res.json({ success: true, events: normalized });
+  } catch (err) {
+    console.error("/chain-events error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Error fetching chain events" });
+  }
+});
+
+app.get("/transparency/:serialNumber", async (req, res) => {
+  try {
+    const serialNumber = (req.params.serialNumber || "").trim();
+    if (!serialNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "Serial number is required",
+      });
+    }
+
+    const productResult = await client.query(
+      `SELECT serialnumber, name, brand, description, image, created_at, updated_at
+       FROM product
+       WHERE serialnumber = $1`,
+      [serialNumber]
+    );
+    const product = productResult.rows?.[0] || null;
+
+    const events = await fetchChainEvents(client, {
+      serialNumber,
+      limit: 500,
+      offset: 0,
+    });
+    const onChainEvents = events.map(normalizeChainEventRow).sort((a, b) => {
+      const aBlock = a.blockNumber ?? -1;
+      const bBlock = b.blockNumber ?? -1;
+      if (aBlock !== bBlock) return aBlock - bBlock;
+      const aLog = a.logIndex ?? -1;
+      const bLog = b.logIndex ?? -1;
+      if (aLog !== bLog) return aLog - bLog;
+      return (a.id || 0) - (b.id || 0);
+    });
+
+    let ownershipHistory = [];
+    try {
+      const ownershipResult = await client.query(
+        `SELECT id, serial_number, owner_name,
+                COALESCE(owner_identifier, NULL) AS owner_identifier,
+                acquired_at, transferred_at, created_at
+         FROM consumer_ownership
+         WHERE serial_number = $1
+         ORDER BY acquired_at ASC NULLS LAST, created_at ASC`,
+        [serialNumber]
+      );
+      ownershipHistory = ownershipResult.rows;
+    } catch (err) {
+      const ownershipResult = await client.query(
+        `SELECT id, serial_number, owner_name,
+                NULL::text AS owner_identifier,
+                acquired_at, transferred_at, created_at
+         FROM consumer_ownership
+         WHERE serial_number = $1
+         ORDER BY acquired_at ASC NULLS LAST, created_at ASC`,
+        [serialNumber]
+      );
+      ownershipHistory = ownershipResult.rows;
+    }
+
+    const reconciliation = buildReconciliation(onChainEvents, ownershipHistory);
+
+    return res.json({
+      success: true,
+      serialNumber,
+      product,
+      onChainEvents,
+      ownershipHistory,
+      reconciliation,
+    });
+  } catch (err) {
+    console.error("/transparency/:serialNumber error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Error building transparency view",
+    });
+  }
+});
+
 // --- Add Product Scan Logging Endpoint ---
 app.post("/scan-product", async (req, res) => {
   const { serialNumber, username, location, isAuthentic } = req.body;
@@ -1210,6 +1615,60 @@ app.post("/scan-product", async (req, res) => {
   }
 });
 
+function normalizeIpAddress(ip) {
+  if (!ip) {
+    return null;
+  }
+  let candidate = String(ip).trim();
+  if (candidate.includes(",")) {
+    candidate = candidate.split(",")[0].trim();
+  }
+  if (candidate.startsWith("::ffff:")) {
+    candidate = candidate.substring(7);
+  }
+  if (candidate === "::1") {
+    candidate = "127.0.0.1";
+  }
+  return candidate;
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const fallback =
+    req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress;
+  return normalizeIpAddress(forwarded || fallback);
+}
+
+function isPrivateIp(ip) {
+  if (!ip) return true;
+  const privatePatterns = [
+    /^10\./,
+    /^127\./,
+    /^192\.168\./,
+    /^172\.(1[6-9]|2\d|3[0-1])\./,
+  ];
+  return privatePatterns.some((pattern) => pattern.test(ip));
+}
+
+function resolveGeo(ip) {
+  if (!ip || isPrivateIp(ip)) {
+    return { country: null, city: null };
+  }
+  try {
+    const geo = geoip.lookup(ip);
+    if (!geo) {
+      return { country: null, city: null };
+    }
+    return {
+      country: geo.country || null,
+      city: geo.city || null,
+    };
+  } catch (err) {
+    console.warn("Failed to resolve geo for ip", ip, err.message);
+    return { country: null, city: null };
+  }
+}
+
 // ===== Verification Endpoint with Duplicate Detection =====
 // Rule v1: same serial scanned from >3 distinct IPs within 10 minutes => suspicious
 async function computeDuplicateSuspicion(serialNumber) {
@@ -1251,8 +1710,9 @@ app.post("/verification/scan", async (req, res) => {
     }
 
     const { qrData, username, location } = value;
-    const ipAddress = req.ip || req.connection.remoteAddress;
+    const ipAddress = getClientIp(req);
     const userAgent = req.get("User-Agent");
+    const { country: geoCountry, city: geoCity } = resolveGeo(ipAddress);
 
     // Parse QR payload
     const parts = String(qrData).split(",");
@@ -1271,9 +1731,19 @@ app.post("/verification/scan", async (req, res) => {
       : true; // if env not set, don’t auto-fail
 
     // Log the scan immediately
-    await client.query(
-      `INSERT INTO product_scans (serial_number, username, location, is_authentic, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+    const insertResult = await client.query(
+      `INSERT INTO product_scans (
+         serial_number,
+         username,
+         location,
+         is_authentic,
+         ip_address,
+         user_agent,
+         geo_country,
+         geo_city
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id`,
       [
         serialNumber,
         username || "anonymous",
@@ -1281,8 +1751,11 @@ app.post("/verification/scan", async (req, res) => {
         isAuthentic,
         ipAddress,
         userAgent,
+        geoCountry,
+        geoCity,
       ]
     );
+    const insertedScanId = insertResult?.rows?.[0]?.id || null;
 
     // Evaluate duplicate suspicion window
     const dup = await computeDuplicateSuspicion(serialNumber);
@@ -1297,14 +1770,14 @@ app.post("/verification/scan", async (req, res) => {
 
     // Update the last inserted scan row to set suspicion fields
     try {
-      await client.query(
-        `UPDATE product_scans
-         SET is_suspicious = $1, suspicion_reason = $2
-         WHERE id = (
-           SELECT id FROM product_scans WHERE serial_number = $3 ORDER BY id DESC LIMIT 1
-         )`,
-        [isSuspicious, suspicionReason, serialNumber]
-      );
+      if (insertedScanId) {
+        await client.query(
+          `UPDATE product_scans
+           SET is_suspicious = $1, suspicion_reason = $2
+           WHERE id = $3`,
+          [isSuspicious, suspicionReason, insertedScanId]
+        );
+      }
     } catch {}
 
     // Activity log (optional)
@@ -1744,6 +2217,245 @@ app.get("/analytics/scans/geo", async (req, res) => {
   }
 });
 
+app.get("/analytics/scans/suspicious-summary", async (req, res) => {
+  const rawDays = parseInt(req.query.days, 10);
+  const days = Math.min(Math.max(rawDays || 30, 1), 365);
+  try {
+    const totalsResult = await client.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE is_suspicious = true)::int AS suspicious_total,
+        COUNT(*) FILTER (WHERE is_suspicious = true AND is_authentic = false)::int AS counterfeit_total,
+        COUNT(*) FILTER (WHERE is_suspicious = true AND is_authentic = true)::int AS flagged_authentic_total,
+        COUNT(*)::int AS scan_total
+      FROM product_scans
+      WHERE scan_time >= NOW() - INTERVAL '${days} days'
+    `);
+
+    const last24hResult = await client.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE is_suspicious = true)::int AS suspicious_total,
+        COUNT(*) FILTER (WHERE is_suspicious = true AND is_authentic = false)::int AS counterfeit_total
+      FROM product_scans
+      WHERE scan_time >= NOW() - INTERVAL '24 hours'
+    `);
+
+    const reasonResult = await client.query(`
+      SELECT 
+        COALESCE(NULLIF(suspicion_reason, ''), 'Unspecified') AS reason,
+        COUNT(*)::int AS count
+      FROM product_scans
+      WHERE is_suspicious = true
+        AND scan_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY COALESCE(NULLIF(suspicion_reason, ''), 'Unspecified')
+      ORDER BY count DESC
+      LIMIT 5
+    `);
+
+    const trendResult = await client.query(`
+      SELECT 
+        DATE(scan_time) AS date,
+        COUNT(*)::int AS suspicious_scans
+      FROM product_scans
+      WHERE is_suspicious = true
+        AND scan_time >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE(scan_time)
+      ORDER BY date ASC
+    `);
+
+    const totalsRow = totalsResult.rows?.[0] || {};
+    const last24hRow = last24hResult.rows?.[0] || {};
+
+    res.json({
+      success: true,
+      period: `${days} days`,
+      data: {
+        totals: {
+          suspicious: totalsRow.suspicious_total || 0,
+          counterfeit: totalsRow.counterfeit_total || 0,
+          flaggedAuthentic: totalsRow.flagged_authentic_total || 0,
+          scans: totalsRow.scan_total || 0,
+        },
+        last24h: {
+          suspicious: last24hRow.suspicious_total || 0,
+          counterfeit: last24hRow.counterfeit_total || 0,
+        },
+        topReasons: reasonResult.rows || [],
+        trend: trendResult.rows || [],
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching suspicious summary:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching suspicious summary",
+    });
+  }
+});
+
+app.get("/analytics/inventory/summary", async (req, res) => {
+  const rawDays = parseInt(req.query.days, 10);
+  const days = Math.min(Math.max(rawDays || 30, 1), 365);
+  try {
+    const [inventoryReg, movesReg] = await Promise.all([
+      client.query(`SELECT to_regclass('public.inventory') AS reg`),
+      client.query(`SELECT to_regclass('public.inventory_moves') AS reg`),
+    ]);
+
+    const inventoryExists = Boolean(inventoryReg.rows?.[0]?.reg);
+    const movesExists = Boolean(movesReg.rows?.[0]?.reg);
+
+    if (!inventoryExists || !movesExists) {
+      return res.json({
+        success: true,
+        available: false,
+        message: "Inventory tables not available",
+        data: {
+          holdings: [],
+          statusBreakdown: [],
+          transferLeaders: [],
+          velocity: [],
+        },
+      });
+    }
+
+    const holdingsResult = await client.query(`
+      SELECT 
+        COALESCE(owner_role, 'unknown') AS owner_role,
+        SUM(qty)::int AS total_qty,
+        COUNT(*)::int AS records
+      FROM inventory
+      GROUP BY COALESCE(owner_role, 'unknown')
+      ORDER BY total_qty DESC
+    `);
+
+    const statusResult = await client.query(`
+      SELECT 
+        COALESCE(status, 'unknown') AS status,
+        SUM(qty)::int AS total_qty
+      FROM inventory
+      GROUP BY COALESCE(status, 'unknown')
+      ORDER BY total_qty DESC
+    `);
+
+    const transferLeaderResult = await client.query(`
+      SELECT 
+        COALESCE(to_owner_role, 'unknown') AS to_role,
+        SUM(qty)::int AS inbound_qty
+      FROM inventory_moves
+      WHERE moved_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY COALESCE(to_owner_role, 'unknown')
+      ORDER BY inbound_qty DESC
+      LIMIT 6
+    `);
+
+    const velocityResult = await client.query(`
+      SELECT 
+        DATE(moved_at) AS date,
+        COALESCE(to_owner_role, 'unknown') AS to_role,
+        SUM(qty)::int AS inbound_qty
+      FROM inventory_moves
+      WHERE moved_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE(moved_at), COALESCE(to_owner_role, 'unknown')
+      ORDER BY date ASC
+    `);
+
+    res.json({
+      success: true,
+      available: true,
+      period: `${days} days`,
+      data: {
+        holdings: holdingsResult.rows || [],
+        statusBreakdown: statusResult.rows || [],
+        transferLeaders: transferLeaderResult.rows || [],
+        velocity: velocityResult.rows || [],
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching inventory summary:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching inventory summary",
+    });
+  }
+});
+
+app.get("/analytics/inventory/moves", async (req, res) => {
+  const rawDays = parseInt(req.query.days, 10);
+  const days = Math.min(Math.max(rawDays || 30, 1), 365);
+  try {
+    const movesReg = await client.query(
+      `SELECT to_regclass('public.inventory_moves') AS reg`
+    );
+    if (!movesReg.rows?.[0]?.reg) {
+      return res.json({
+        success: true,
+        available: false,
+        message: "Inventory moves table not available",
+        data: {
+          timeline: [],
+          roleMatrix: [],
+          recent: [],
+        },
+      });
+    }
+
+    const timelineResult = await client.query(`
+      SELECT 
+        DATE(moved_at) AS date,
+        COALESCE(from_owner_role, 'unknown') AS from_role,
+        COALESCE(to_owner_role, 'unknown') AS to_role,
+        SUM(qty)::int AS qty
+      FROM inventory_moves
+      WHERE moved_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY DATE(moved_at), COALESCE(from_owner_role, 'unknown'), COALESCE(to_owner_role, 'unknown')
+      ORDER BY date ASC
+    `);
+
+    const matrixResult = await client.query(`
+      SELECT 
+        COALESCE(from_owner_role, 'unknown') AS from_role,
+        COALESCE(to_owner_role, 'unknown') AS to_role,
+        SUM(qty)::int AS qty
+      FROM inventory_moves
+      WHERE moved_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY COALESCE(from_owner_role, 'unknown'), COALESCE(to_owner_role, 'unknown')
+      ORDER BY qty DESC
+    `);
+
+    const recentResult = await client.query(`
+      SELECT 
+        id,
+        serial_number,
+        from_owner_role,
+        to_owner_role,
+        qty,
+        status,
+        moved_at,
+        actor_username
+      FROM inventory_moves
+      ORDER BY moved_at DESC
+      LIMIT 15
+    `);
+
+    res.json({
+      success: true,
+      available: true,
+      period: `${days} days`,
+      data: {
+        timeline: timelineResult.rows || [],
+        roleMatrix: matrixResult.rows || [],
+        recent: recentResult.rows || [],
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching inventory moves:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching inventory moves",
+    });
+  }
+});
+
 // ===== COMMUNICATION & CUSTOMER SUPPORT MODULE ENDPOINTS =====
 
 // Get chat history
@@ -1899,7 +2611,7 @@ app.post("/support/test-email", async (req, res) => {
   }
 });
 
-server.listen(port, () => {
+activeServer = server.listen(port, () => {
   console.log(`Server is running on port ${port} with Socket.IO support`);
 
   // Test email configuration on startup (only when enabled)

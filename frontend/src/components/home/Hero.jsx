@@ -5,7 +5,10 @@ import { Link } from "react-router-dom";
 
 const Hero = () => {
   return (
-    <div id="hero" className="relative min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 w-full overflow-hidden">
+    <div
+      id="hero"
+      className="relative min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 w-full overflow-hidden"
+    >
       <Navbar />
       <div className="flex flex-col md:flex-row items-center justify-between w-full h-full px-8 pt-32 pb-12 gap-8">
         <div className="flex-1 z-10">
@@ -13,15 +16,23 @@ const Hero = () => {
             Welcome to ProductGuard
           </span>
           <h1 className="text-4xl md:text-6xl font-bold text-white leading-tight mb-6">
-            Protect Your Products with <span className="text-primary-400">Smart</span> Verification
+            Protect Your Products with{" "}
+            <span className="text-primary-400">Smart</span> Verification
           </h1>
           <p className="text-xl text-gray-300 leading-relaxed mb-8">
-            Our advanced product protection system ensures authenticity and builds trust through blockchain technology. Guard your brand and customers from counterfeiting.
+            Our advanced product protection system ensures authenticity and
+            builds trust through blockchain technology. Guard your brand and
+            customers from counterfeiting.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 mb-8">
             <Link to="/scanner">
               <button className="w-full sm:w-auto px-8 py-4 bg-primary-500 text-white rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105 shadow-lg shadow-primary-500/20">
                 Scan QR Code
+              </button>
+            </Link>
+            <Link to="/transparency">
+              <button className="w-full sm:w-auto px-8 py-4 bg-white/10 text-white rounded-xl hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-105 shadow-lg border border-white/30">
+                Transparency Dashboard
               </button>
             </Link>
             <Link to="/login">
@@ -32,20 +43,50 @@ const Hero = () => {
           </div>
           <div className="flex items-center space-x-8 pt-4">
             <div className="flex items-center space-x-2">
-              <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              <svg
+                className="w-6 h-6 text-primary-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               <span className="text-gray-300">Smart Protection</span>
             </div>
             <div className="flex items-center space-x-2">
-              <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              <svg
+                className="w-6 h-6 text-primary-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               <span className="text-gray-300">Real-time Tracking</span>
             </div>
             <div className="flex items-center space-x-2">
-              <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              <svg
+                className="w-6 h-6 text-primary-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
               <span className="text-gray-300">Anti-Counterfeit</span>
             </div>

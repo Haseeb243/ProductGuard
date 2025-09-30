@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import abi from "../../utils/Identeefi.json";
 import bgImg from "../../img/bg.png";
 import { useConfig } from "../../context/ConfigContext";
+import { buildDescriptiveLocation } from "../../utils/location";
 
 const options = ["true", "false"];
 
@@ -98,12 +99,9 @@ const UpdateProductDetails = () => {
         const resp = await fetch(url);
         if (resp.ok) {
           const data = await resp.json();
-          const parts = [
-            data.locality || data.city || data.principalSubdivision,
-            data.countryName,
-          ].filter(Boolean);
-          if (parts.length) {
-            setCurrLocation(parts.join(", ").replace(/,/g, ";"));
+          const descriptive = buildDescriptiveLocation(data);
+          if (descriptive) {
+            setCurrLocation(descriptive.replace(/,/g, ";"));
             return;
           }
         }

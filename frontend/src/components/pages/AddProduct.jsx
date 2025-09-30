@@ -15,6 +15,7 @@ import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutli
 import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import { buildDescriptiveLocation } from "../../utils/location";
 
 const getEthereumObject = () => window.ethereum;
 
@@ -124,12 +125,9 @@ const AddProduct = () => {
         const resp = await fetch(url);
         if (resp.ok) {
           const data = await resp.json();
-          const parts = [
-            data.locality || data.city || data.principalSubdivision,
-            data.countryName,
-          ].filter(Boolean);
-          if (parts.length) {
-            setManuLocation(parts.join(", ").replace(/,/g, ";"));
+          const descriptive = buildDescriptiveLocation(data);
+          if (descriptive) {
+            setManuLocation(descriptive.replace(/,/g, ";"));
             return;
           }
         }

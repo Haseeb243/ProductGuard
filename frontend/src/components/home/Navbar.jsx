@@ -12,7 +12,7 @@ export const Navbar = () => {
   const scrollToSection = (sectionId) => {
     const element = document.getElementById(sectionId);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
+      element.scrollIntoView({ behavior: "smooth" });
       setIsMenuOpen(false);
     }
   };
@@ -50,7 +50,11 @@ export const Navbar = () => {
             </button>
             {/* User's custom logo image */}
             <div className="flex items-center space-x-3">
-              <img src={logoImg} alt="ProductGuard Logo" className="h-24 md:h-28 lg:h-32 w-auto max-w-xs object-contain mr-4 shadow-lg" />
+              <img
+                src={logoImg}
+                alt="ProductGuard Logo"
+                className="h-24 md:h-28 lg:h-32 w-auto max-w-xs object-contain mr-4 shadow-lg"
+              />
             </div>
           </div>
           {/* Desktop Menu */}
@@ -68,6 +72,11 @@ export const Navbar = () => {
           </div>
         </div>
         <div className="flex items-center space-x-4">
+          <Link to="/transparency" className="no-underline">
+            <button className="px-6 py-2.5 bg-white/10 text-white rounded-lg hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200">
+              Transparency
+            </button>
+          </Link>
           <Link to="/login" className="no-underline">
             <button className="px-6 py-2.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 shadow-lg shadow-primary-500/20">
               Login
@@ -89,6 +98,15 @@ export const Navbar = () => {
                 <span>{item.text}</span>
               </button>
             ))}
+            <Link to="/transparency" className="block">
+              <button
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full text-left px-3 py-2.5 text-gray-300 hover:text-white hover:bg-gray-700 rounded-md flex items-center space-x-2 text-lg"
+              >
+                <span>🔗</span>
+                <span>Transparency</span>
+              </button>
+            </Link>
           </div>
         </div>
       )}
