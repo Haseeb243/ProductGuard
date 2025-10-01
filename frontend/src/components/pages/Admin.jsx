@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import { LinkButton } from "../LinkButton";
 import PersonAddAltIcon from "@mui/icons-material/PersonAddAlt";
@@ -22,6 +22,7 @@ import {
   PulseIcon,
   AuditIcon,
 } from "../admin/navigation";
+import useAuth from "../../hooks/useAuth";
 
 const BellIcon = () => (
   <span className="inline-block w-5 h-5 bg-gray-400 rounded-full" />
@@ -31,7 +32,14 @@ const DownloadIcon = () => (
 );
 const Admin = () => {
   const { apiBaseUrl } = useConfig();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [deleteUser, setDeleteUser] = useState("");
@@ -176,12 +184,13 @@ const Admin = () => {
               className="h-8 w-8 rounded-full border-2 border-gray-700"
               alt="Profile"
             />
-            <Link
-              to="/login"
+            <button
+              type="button"
+              onClick={handleLogout}
               className="text-gray-400 hover:text-red-400 transition ml-2"
             >
               Logout
-            </Link>
+            </button>
           </div>
         </div>
         {/* KPI Cards */}

@@ -1,897 +1,1082 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useConfig } from "../../context/ConfigContext";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
-import logoImg from "../../img/logo.png";
-import profilePic from "../../img/profile.jpeg";
+import { useConfig } from "../../context/ConfigContext";
+import AdminShell from "../admin/AdminShell";
+import { GlassCard, glassButtonClass } from "../admin/ui";
 
-// Icons
-const DashboardIcon = () => (
+const LOG_TYPE_LABELS = {
+  activity: "Activity",
+  login: "Login Attempts",
+  scan: "Product Scans",
+};
+
+const INITIAL_FILTERS = {
+  username: "",
+  days: 30,
+  success: "",
+  isAuthentic: "",
+  isSuspicious: "",
+  action: "",
+  serialNumber: "",
+};
+
+const controlBaseClasses =
+  "w-full border border-white/12 bg-white/5 text-sm text-white/80 transition focus:border-white/40 focus:outline-none focus:ring-0";
+
+const inputClasses = `${controlBaseClasses} rounded-2xl px-4 py-2.5 placeholder-white/40`;
+
+const selectClasses = `${controlBaseClasses} appearance-none px-4 py-2.5 pr-10`;
+
+const chipClasses =
+  "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/80";
+
+const badgeBase =
+  "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold";
+
+const statusBadge = {
+  success: `${badgeBase} bg-emerald-500/15 text-emerald-200 border border-emerald-300/30`,
+  danger: `${badgeBase} bg-rose-500/15 text-rose-200 border border-rose-300/30`,
+  warning: `${badgeBase} bg-amber-500/15 text-amber-100 border border-amber-300/30`,
+  info: `${badgeBase} bg-sky-500/15 text-sky-100 border border-sky-300/30`,
+};
+
+const SelectControl = ({
+  value,
+  onChange,
+  children,
+  className = "",
+  size = "default",
+}) => {
+  const sizeClasses =
+    size === "pill"
+      ? "rounded-full px-5 py-2 text-sm"
+      : "rounded-2xl px-4 py-2.5 text-sm";
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        value={value}
+        onChange={onChange}
+        className={`${selectClasses} ${sizeClasses} bg-white/8 text-white/80 backdrop-blur-sm`}
+      >
+        {children}
+      </select>
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-white/40">
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+        </svg>
+      </span>
+    </div>
+  );
+};
+
+const formatNumber = (value) => Number(value ?? 0).toLocaleString();
+
+const formatLabel = (value) => {
+  if (!value) return "—";
+  return value
+    .toString()
+    .split(/[_-\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const DownloadIcon = ({ className = "h-4 w-4" }) => (
   <svg
-    className="w-5 h-5 mr-2"
+    className={className}
     fill="none"
     stroke="currentColor"
-    strokeWidth={2}
+    strokeWidth={1.8}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
-      d="M3 13h2v-2H3v2zm4 0h2v-6H7v6zm4 0h2V7h-2v6zm4 0h2v-4h-2v4zm4 0h2v-2h-2v2z"
+      d="M12 5v10m0 0l-4-4m4 4l4-4m3 8H9a3 3 0 01-3-3V7"
     />
   </svg>
 );
 
-const FactoryIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M3 21V9l7-4v4l7-4v16H3z"
-    />
-  </svg>
-);
-
-const TruckIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"
-    />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"
-    />
-  </svg>
-);
-
-const StoreIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-    />
-  </svg>
-);
-
-const AuditIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-    />
-  </svg>
-);
-
-const BellIcon = () => (
-  <svg
-    className="w-5 h-5"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15 17h5l-5 5 5 5M6 7l5-5-5-5"
-    />
-  </svg>
-);
-
-const DownloadIcon = () => (
-  <svg
-    className="w-4 h-4"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-    />
-  </svg>
-);
-
-// Sidebar Link Component
-const SidebarLink = ({ icon, label, to, active = false }) => (
-  <Link
-    to={to}
-    className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
-      active
-        ? "bg-blue-600 text-white shadow-lg transform scale-105"
-        : "text-gray-300 hover:bg-gray-800 hover:text-white hover:scale-105"
-    }`}
-  >
-    {icon}
-    <span className="ml-2">{label}</span>
-  </Link>
-);
-
-const SIDEBAR_LINKS = [
-  { icon: <DashboardIcon />, label: "Dashboard", to: "/admin" },
-  {
-    icon: <AuditIcon />,
-    label: "Audit Logs",
-    to: "/audit-logs",
-  },
-  {
-    icon: <FactoryIcon />,
-    label: "Manufacturers",
-    to: "/manage-account?role=manufacturer",
-  },
-  {
-    icon: <TruckIcon />,
-    label: "Suppliers",
-    to: "/manage-account?role=supplier",
-  },
-  {
-    icon: <StoreIcon />,
-    label: "Retailers",
-    to: "/manage-account?role=retailer",
-  },
-  {
-    icon: <DashboardIcon />,
-    label: "Support",
-    to: "/support-dashboard",
-  },
-  {
-    icon: <DashboardIcon />,
-    label: "2FA Settings",
-    to: "/2fa-settings",
-  },
-];
+const endpointForLogType = {
+  activity: "activity-logs",
+  login: "login-attempts",
+  scan: "product-scans",
+};
 
 const AuditLogs = () => {
   const { apiBaseUrl } = useConfig();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [logs, setLogs] = useState([]);
   const [logType, setLogType] = useState("activity");
-  const [loading, setLoading] = useState(true);
-
-  // Filters state
-  const [filters, setFilters] = useState({
-    username: "",
-    days: 30,
-    success: "",
-    isAuthentic: "",
-    isSuspicious: "",
-    action: "",
-    serialNumber: "",
-  });
-
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [dailyAnalytics, setDailyAnalytics] = useState({
     scans: [],
     logins: [],
   });
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  // Map frontend logType to correct backend endpoints
-  const getEndpointUrl = (type) => {
-    const endpointMap = {
-      activity: "activity-logs",
-      login: "login-attempts",
-      scan: "product-scans",
-    };
-    return endpointMap[type] || "activity-logs";
-  };
+  const activeFilters = useMemo(() => {
+    const entries = [];
+    if (filters.username) {
+      entries.push({ label: "User", value: filters.username });
+    }
+    if (logType === "login" && filters.success) {
+      entries.push({
+        label: "Status",
+        value: filters.success === "true" ? "Success" : "Failed",
+      });
+    }
+    if (logType === "scan" && filters.serialNumber) {
+      entries.push({ label: "Serial", value: filters.serialNumber });
+    }
+    if (logType === "scan" && filters.isAuthentic) {
+      entries.push({
+        label: "Authenticity",
+        value: filters.isAuthentic === "true" ? "Authentic" : "Counterfeit",
+      });
+    }
+    if (logType === "activity" && filters.action) {
+      entries.push({ label: "Action", value: filters.action });
+    }
+    if (filters.isSuspicious && logType === "scan") {
+      entries.push({
+        label: "Suspicious",
+        value: filters.isSuspicious === "true" ? "Only" : "Exclude",
+      });
+    }
+    return entries;
+  }, [filters, logType]);
 
-  useEffect(() => {
-    fetchLogs();
-    fetchDailyAnalytics();
-  }, [logType, filters]);
+  const metaSummary = useMemo(() => {
+    const logLabel = LOG_TYPE_LABELS[logType] || LOG_TYPE_LABELS.activity;
+    const windowLabel = `${filters.days}d window`;
+    const recordsLabel = `${logs.length.toLocaleString()} records`;
+    const filtersLabel = activeFilters.length
+      ? `${activeFilters.length} active`
+      : "Filters off";
+    const updatedLabel = lastRefreshed
+      ? new Date(lastRefreshed).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "Pending";
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    try {
-      // Build query parameters for filtering
+    return [
+      { label: "Log Type", value: logLabel, key: "log-type" },
+      { label: "Time Frame", value: windowLabel, key: "window" },
+      { label: "Records", value: recordsLabel, key: "records" },
+      { label: "Filters", value: filtersLabel, key: "filters" },
+      { label: "Updated", value: updatedLabel, key: "updated" },
+    ];
+  }, [activeFilters.length, filters.days, lastRefreshed, logType, logs.length]);
+
+  const summaryCards = useMemo(() => {
+    const uniqueUsersCount = new Set(
+      logs.map((log) => log.username).filter(Boolean)
+    ).size;
+    const uniqueUsersValue = formatNumber(uniqueUsersCount);
+
+    if (logType === "activity") {
+      const actionCounts = logs.reduce((acc, log) => {
+        const actionKey = log.action || "unspecified";
+        acc[actionKey] = (acc[actionKey] || 0) + 1;
+        return acc;
+      }, {});
+      const [[topActionKey = "", topActionCount = 0] = []] = Object.entries(
+        actionCounts
+      ).sort((a, b) => b[1] - a[1]);
+      const sensitivePattern = /(delete|update|revoke|suspend|disable)/i;
+      const sensitiveCount = logs.filter((log) =>
+        sensitivePattern.test(log.action || "")
+      ).length;
+      const targetedCount = logs.filter((log) => Boolean(log.target)).length;
+
+      return [
+        {
+          key: "actors",
+          label: "Unique actors",
+          value: uniqueUsersValue,
+          helper: "Distinct user accounts in this view",
+          accent: "bg-emerald-500/25",
+        },
+        {
+          key: "top-action",
+          label: "Most common action",
+          value: topActionCount ? formatLabel(topActionKey) : "—",
+          helper: topActionCount
+            ? `${formatNumber(topActionCount)} occurrences`
+            : "No activity recorded",
+          accent: "bg-sky-500/25",
+        },
+        {
+          key: "sensitive",
+          label: "Sensitive operations",
+          value: formatNumber(sensitiveCount),
+          helper: "Delete & privilege changes",
+          accent: "bg-amber-500/25",
+        },
+        {
+          key: "targets",
+          label: "Records touched",
+          value: formatNumber(targetedCount),
+          helper: "Entries specifying a target",
+          accent: "bg-indigo-500/25",
+        },
+      ];
+    }
+
+    if (logType === "login") {
+      const successCount = logs.filter((log) => Boolean(log.success)).length;
+      const failureCount = logs.length - successCount;
+      const successRate = logs.length
+        ? ((successCount / logs.length) * 100).toFixed(1)
+        : "0.0";
+      const uniqueIps = new Set(
+        logs.map((log) => log.ip_address).filter(Boolean)
+      ).size;
+
+      return [
+        {
+          key: "success-rate",
+          label: "Success rate",
+          value: `${successRate}%`,
+          helper: `${formatNumber(successCount)} successful attempts`,
+          accent: "bg-emerald-500/25",
+        },
+        {
+          key: "failures",
+          label: "Failed attempts",
+          value: formatNumber(failureCount),
+          helper: "During the selected window",
+          accent: "bg-rose-500/25",
+        },
+        {
+          key: "ips",
+          label: "Unique IP sources",
+          value: formatNumber(uniqueIps),
+          helper: "Network origins observed",
+          accent: "bg-sky-500/25",
+        },
+        {
+          key: "accounts",
+          label: "Accounts observed",
+          value: uniqueUsersValue,
+          helper: "Distinct usernames",
+          accent: "bg-indigo-500/25",
+        },
+      ];
+    }
+
+    if (logType === "scan") {
+      const authenticCount = logs.filter((log) =>
+        Boolean(log.is_authentic)
+      ).length;
+      const counterfeitCount = logs.length - authenticCount;
+      const suspiciousCount = logs.filter((log) =>
+        Boolean(log.is_suspicious)
+      ).length;
+      const uniqueLocations = new Set(
+        logs.map((log) => log.location).filter(Boolean)
+      ).size;
+      const authenticRate = logs.length
+        ? ((authenticCount / logs.length) * 100).toFixed(1)
+        : "0.0";
+
+      return [
+        {
+          key: "authentic-rate",
+          label: "Authentic rate",
+          value: `${authenticRate}%`,
+          helper: `${formatNumber(authenticCount)} authentic scans`,
+          accent: "bg-emerald-500/25",
+        },
+        {
+          key: "counterfeit",
+          label: "Counterfeit flagged",
+          value: formatNumber(counterfeitCount),
+          helper: "Detected within this view",
+          accent: "bg-rose-500/25",
+        },
+        {
+          key: "suspicious",
+          label: "Suspicious alerts",
+          value: formatNumber(suspiciousCount),
+          helper: "Marked for deeper review",
+          accent: "bg-amber-500/25",
+        },
+        {
+          key: "locations",
+          label: "Unique locations",
+          value: formatNumber(uniqueLocations),
+          helper: "Based on scan metadata",
+          accent: "bg-sky-500/25",
+        },
+      ];
+    }
+
+    return [
+      {
+        key: "actors",
+        label: "Unique actors",
+        value: uniqueUsersValue,
+        helper: "Distinct user accounts in this view",
+        accent: "bg-emerald-500/25",
+      },
+      {
+        key: "records",
+        label: "Records in view",
+        value: formatNumber(logs.length),
+        helper: "Matches current filters",
+        accent: "bg-sky-500/25",
+      },
+      {
+        key: "filters",
+        label: "Active filters",
+        value: formatNumber(activeFilters.length),
+        helper: "Applied constraints",
+        accent: "bg-amber-500/25",
+      },
+      {
+        key: "updated",
+        label: "Last refreshed",
+        value: lastRefreshed
+          ? new Date(lastRefreshed).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "—",
+        helper: "Local browser time",
+        accent: "bg-indigo-500/25",
+      },
+    ];
+  }, [activeFilters.length, lastRefreshed, logType, logs]);
+
+  const buildParams = useCallback(
+    ({ includeLimit = true } = {}) => {
       const params = new URLSearchParams();
-      params.append("limit", "100");
-
+      if (includeLimit) {
+        params.append("limit", "100");
+      }
       if (filters.username) params.append("username", filters.username);
-      if (filters.days) params.append("days", filters.days);
+      if (filters.days) params.append("days", filters.days.toString());
 
       if (logType === "login") {
         if (filters.success) params.append("success", filters.success);
-      } else if (logType === "scan") {
+      }
+
+      if (logType === "scan") {
         if (filters.isAuthentic)
           params.append("isAuthentic", filters.isAuthentic);
         if (filters.isSuspicious)
           params.append("isSuspicious", filters.isSuspicious);
         if (filters.serialNumber)
           params.append("serialNumber", filters.serialNumber);
-      } else if (logType === "activity") {
+      }
+
+      if (logType === "activity") {
         if (filters.action) params.append("action", filters.action);
       }
 
-      const endpoint = getEndpointUrl(logType);
-      const res = await fetch(`${apiBaseUrl}/${endpoint}?${params.toString()}`);
+      return params.toString();
+    },
+    [filters, logType]
+  );
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const endpoint =
+        endpointForLogType[logType] || endpointForLogType.activity;
+      const queryString = buildParams();
+      const res = await fetch(`${apiBaseUrl}/${endpoint}?${queryString}`);
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
 
       const data = await res.json();
-      setLogs(data);
-    } catch (e) {
-      console.error("Failed to load logs:", e);
-      toast.error("Failed to load logs: " + e.message);
+      const parsed = Array.isArray(data) ? data : data?.data ?? [];
+      setLogs(parsed);
+      setLastRefreshed(new Date());
+    } catch (error) {
+      console.error("Failed to load logs", error);
+      toast.error(error.message || "Failed to load logs");
+      setLogs([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
+  }, [apiBaseUrl, buildParams, logType]);
 
-  const fetchDailyAnalytics = async () => {
+  const fetchDailyAnalytics = useCallback(async () => {
     try {
       const [scansRes, loginsRes] = await Promise.all([
         fetch(`${apiBaseUrl}/analytics/scans/daily?days=${filters.days}`),
         fetch(`${apiBaseUrl}/analytics/logins/daily?days=${filters.days}`),
       ]);
 
-      const scansData = scansRes.ok ? await scansRes.json() : { data: [] };
-      const loginsData = loginsRes.ok ? await loginsRes.json() : { data: [] };
+      const scansJson = scansRes.ok ? await scansRes.json() : { data: [] };
+      const loginsJson = loginsRes.ok ? await loginsRes.json() : { data: [] };
 
       setDailyAnalytics({
-        scans: scansData.data || [],
-        logins: loginsData.data || [],
+        scans: scansJson?.data ?? [],
+        logins: loginsJson?.data ?? [],
       });
-    } catch (e) {
-      console.error("Failed to load daily analytics:", e);
+    } catch (error) {
+      console.error("Failed to load daily analytics", error);
+    }
+  }, [apiBaseUrl, filters.days]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  useEffect(() => {
+    fetchDailyAnalytics();
+  }, [fetchDailyAnalytics]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchLogs(), fetchDailyAnalytics()]);
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const handleDownloadLogs = async () => {
+  const handleDownloadLogs = () => {
     try {
-      const endpoint = getEndpointUrl(logType);
-      window.open(`${apiBaseUrl}/download-logs/${logType}`, "_blank");
-    } catch (e) {
+      const queryString = buildParams();
+      const url = `${apiBaseUrl}/download-logs/${logType}${
+        queryString ? `?${queryString}` : ""
+      }`;
+      window.open(url, "_blank");
+    } catch (error) {
+      console.error("Failed to download logs", error);
       toast.error("Failed to download logs");
     }
   };
 
   const clearFilters = () => {
-    setFilters({
-      username: "",
-      days: 30,
-      success: "",
-      isAuthentic: "",
-      isSuspicious: "",
-      action: "",
-      serialNumber: "",
-    });
+    setFilters(INITIAL_FILTERS);
   };
 
-  return (
-    <div className="flex min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
-      {/* Sidebar */}
-      {sidebarOpen && (
-        <aside className="w-64 bg-gray-900 bg-opacity-80 backdrop-blur-lg border-r border-gray-800 flex flex-col shadow-2xl">
-          <div className="flex items-center justify-between p-6 border-b border-gray-800">
-            <div className="flex items-center space-x-3">
-              <img src={logoImg} alt="Logo" className="h-10 w-10 rounded-lg" />
-              <h2 className="text-xl font-bold text-white">Identeefi</h2>
-            </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="text-white"
-            >
-              ✕
-            </button>
-          </div>
-          <nav className="flex-1 px-2 py-4 space-y-2">
-            {SIDEBAR_LINKS.map((link) => (
-              <SidebarLink
-                key={link.label}
-                {...link}
-                active={link.to === "/audit-logs"}
-              />
-            ))}
-          </nav>
-        </aside>
-      )}
+  const handleFilterChange = (key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-screen">
-        {/* Top Bar */}
-        <div className="sticky top-0 z-10 bg-gray-900 bg-opacity-80 backdrop-blur-lg flex items-center justify-between px-6 py-3 border-b border-gray-800">
-          <div className="flex items-center">
-            {!sidebarOpen && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="text-gray-400 hover:text-white mr-4"
-              >
-                ☰
-              </button>
-            )}
-            <h1 className="text-2xl font-bold tracking-tight">
-              Audit Logs & Analytics
-            </h1>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button className="text-gray-400 hover:text-white">
-              <BellIcon />
-            </button>
-            <img
-              src={profilePic}
-              className="h-8 w-8 rounded-full border-2 border-gray-700"
-              alt="Profile"
-            />
-            <Link
-              to="/login"
-              className="text-gray-400 hover:text-red-400 transition ml-2"
-            >
-              Logout
-            </Link>
-          </div>
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        onClick={handleRefresh}
+        className={`${glassButtonClass} ${
+          refreshing ? "cursor-wait opacity-70" : ""
+        }`}
+        disabled={refreshing}
+      >
+        {refreshing ? (
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        ) : (
+          <span className="text-base">⟳</span>
+        )}
+        <span>{refreshing ? "Refreshing" : "Refresh data"}</span>
+      </button>
+      <button
+        type="button"
+        onClick={handleDownloadLogs}
+        className={glassButtonClass}
+      >
+        <DownloadIcon />
+        <span>Download CSV</span>
+      </button>
+    </div>
+  );
+
+  const filterToolbar = (
+    <GlassCard className="w-full space-y-5 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.45em] text-white/40">
+            Filters
+          </p>
+          <h2 className="text-lg font-semibold text-white tracking-tight">
+            Tune the audit signal
+          </h2>
         </div>
-
-        {/* Main Content Area */}
-        <main className="flex-1 p-6 space-y-8 text-white">
-          <div className="mb-4">
-            <p className="text-gray-300">
-              Monitor system activity, user logins, and product scans with
-              advanced filtering and analytics.
-            </p>
-          </div>
-
-          {/* Analytics Charts Section */}
-          {dailyAnalytics && (
-            <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Daily Scans Chart */}
-              <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">
-                  Daily Scans Trend ({filters.days} days)
-                </h3>
-                {dailyAnalytics.scans.length > 0 ? (
-                  <div className="space-y-3">
-                    {dailyAnalytics.scans.slice(0, 7).map((day) => (
-                      <div
-                        key={day.date}
-                        className="bg-gray-800 bg-opacity-50 rounded-lg p-3"
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-300 text-sm font-medium">
-                            {new Date(day.date).toLocaleDateString()}
-                          </span>
-                          <span className="text-blue-400 font-bold">
-                            {day.total_scans} total
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-green-400">
-                            ✓ {day.authentic_scans || 0} authentic
-                          </span>
-                          <span className="text-red-400">
-                            ✗ {day.counterfeit_scans || 0} counterfeit
-                          </span>
-                          <span className="text-yellow-400">
-                            ⚠ {day.suspicious_scans || 0} suspicious
-                          </span>
-                        </div>
-                        <div className="mt-2 bg-gray-700 rounded-full h-2">
-                          <div
-                            className="bg-gradient-to-r from-green-400 to-blue-400 h-2 rounded-full transition-all duration-500"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                (day.authentic_scans /
-                                  Math.max(day.total_scans, 1)) *
-                                  100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="text-gray-500 text-4xl mb-2">📊</div>
-                    <p className="text-gray-500">
-                      No scan data available for the selected period
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Daily Logins Chart */}
-              <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800">
-                <h3 className="text-lg font-semibold text-white mb-4">
-                  Daily Login Activity ({filters.days} days)
-                </h3>
-                {dailyAnalytics.logins.length > 0 ? (
-                  <div className="space-y-3">
-                    {dailyAnalytics.logins.slice(0, 7).map((day) => (
-                      <div
-                        key={day.date}
-                        className="bg-gray-800 bg-opacity-50 rounded-lg p-3"
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-gray-300 text-sm font-medium">
-                            {new Date(day.date).toLocaleDateString()}
-                          </span>
-                          <span className="text-purple-400 font-bold">
-                            {day.total_attempts} attempts
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-green-400">
-                            ✓ {day.successful_logins || 0} success
-                          </span>
-                          <span className="text-red-400">
-                            ✗ {day.failed_logins || 0} failed
-                          </span>
-                          <span className="text-blue-400">
-                            👥 {day.unique_users || 0} users
-                          </span>
-                        </div>
-                        <div className="mt-2 bg-gray-700 rounded-full h-2">
-                          <div
-                            className="bg-gradient-to-r from-green-400 to-purple-400 h-2 rounded-full transition-all duration-500"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                (day.successful_logins /
-                                  Math.max(day.total_attempts, 1)) *
-                                  100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="text-gray-500 text-4xl mb-2">👤</div>
-                    <p className="text-gray-500">
-                      No login data available for the selected period
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Filters Section */}
-          <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl p-6 shadow-lg border border-gray-800 mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-white">
-                Log Filters & Controls
-              </h3>
-              <button
-                onClick={clearFilters}
-                className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm transition-colors"
+        <div className="flex items-center gap-3">
+          <SelectControl
+            value={logType}
+            onChange={(event) => setLogType(event.target.value)}
+            size="pill"
+            className="min-w-[10rem]"
+          >
+            <option value="activity">Activity Logs</option>
+            <option value="login">Login Attempts</option>
+            <option value="scan">Product Scans</option>
+          </SelectControl>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-sm font-medium text-white/70 transition hover:text-white"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
+        <label className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+            Username
+          </span>
+          <input
+            type="text"
+            placeholder="e.g. jessica.davis"
+            value={filters.username}
+            onChange={(event) =>
+              handleFilterChange("username", event.target.value)
+            }
+            className={inputClasses}
+          />
+        </label>
+        <label className="space-y-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+            Time window
+          </span>
+          <SelectControl
+            value={filters.days}
+            onChange={(event) =>
+              handleFilterChange(
+                "days",
+                Number.parseInt(event.target.value, 10)
+              )
+            }
+            className="w-full"
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+            <option value={180}>Last 180 days</option>
+          </SelectControl>
+        </label>
+        {logType === "activity" ? (
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+              Action
+            </span>
+            <SelectControl
+              value={filters.action}
+              onChange={(event) =>
+                handleFilterChange("action", event.target.value)
+              }
+              className="w-full"
+            >
+              <option value="">All actions</option>
+              <option value="add_product">Add product</option>
+              <option value="delete_user">Delete user</option>
+              <option value="login">Login</option>
+              <option value="register">Register</option>
+              <option value="update_role">Update role</option>
+            </SelectControl>
+          </label>
+        ) : null}
+        {logType === "login" ? (
+          <>
+            <label className="space-y-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+                Login status
+              </span>
+              <SelectControl
+                value={filters.success}
+                onChange={(event) =>
+                  handleFilterChange("success", event.target.value)
+                }
+                className="w-full"
               >
-                Clear Filters
-              </button>
+                <option value="">All attempts</option>
+                <option value="true">Successful only</option>
+                <option value="false">Failed only</option>
+              </SelectControl>
+            </label>
+          </>
+        ) : null}
+        {logType === "scan" ? (
+          <>
+            <label className="space-y-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+                Serial number
+              </span>
+              <input
+                type="text"
+                placeholder="PG-1020-9921"
+                value={filters.serialNumber}
+                onChange={(event) =>
+                  handleFilterChange("serialNumber", event.target.value)
+                }
+                className={inputClasses}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+                Authenticity
+              </span>
+              <SelectControl
+                value={filters.isAuthentic}
+                onChange={(event) =>
+                  handleFilterChange("isAuthentic", event.target.value)
+                }
+                className="w-full"
+              >
+                <option value="">All scans</option>
+                <option value="true">Authentic only</option>
+                <option value="false">Counterfeit only</option>
+              </SelectControl>
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-white/50">
+                Suspicious flag
+              </span>
+              <SelectControl
+                value={filters.isSuspicious}
+                onChange={(event) =>
+                  handleFilterChange("isSuspicious", event.target.value)
+                }
+                className="w-full"
+              >
+                <option value="">Include all</option>
+                <option value="true">Only flagged</option>
+                <option value="false">Hide flagged</option>
+              </SelectControl>
+            </label>
+          </>
+        ) : null}
+        <div className="flex h-full flex-col justify-end">
+          <button
+            type="button"
+            onClick={handleDownloadLogs}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/15"
+          >
+            <DownloadIcon />
+            <span>Export CSV</span>
+          </button>
+        </div>
+      </div>
+      {activeFilters.length ? (
+        <div className="flex flex-wrap gap-3">
+          {activeFilters.map((chip) => (
+            <span key={`${chip.label}-${chip.value}`} className={chipClasses}>
+              <span className="uppercase tracking-wide text-[0.6rem] text-white/50">
+                {chip.label}
+              </span>
+              <span className="font-medium text-white/90">{chip.value}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </GlassCard>
+  );
+
+  const columnCount = logType === "scan" ? 6 : logType === "login" ? 4 : 5;
+
+  const renderTableHeader = () => {
+    if (logType === "activity") {
+      return (
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            User
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            Action
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            Target
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            Details
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            Timestamp
+          </th>
+        </tr>
+      );
+    }
+    if (logType === "login") {
+      return (
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            User
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            Outcome
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            IP address
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+            Timestamp
+          </th>
+        </tr>
+      );
+    }
+    return (
+      <tr>
+        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+          Serial number
+        </th>
+        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+          User
+        </th>
+        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+          Location
+        </th>
+        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+          Authentic
+        </th>
+        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+          Suspicious
+        </th>
+        <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white/50">
+          Timestamp
+        </th>
+      </tr>
+    );
+  };
+
+  const renderActivityRow = (log) => (
+    <tr
+      key={log.id ?? `${log.username}-${log.log_time}`}
+      className="transition hover:bg-white/5"
+    >
+      <td className="px-6 py-3 text-sm font-medium text-white">
+        {log.username || "—"}
+      </td>
+      <td className="px-6 py-3 text-sm">
+        <span className={statusBadge.info}>{log.action || "—"}</span>
+      </td>
+      <td className="px-6 py-3 text-sm text-white/70">{log.target || "—"}</td>
+      <td className="px-6 py-3 text-sm text-white/60">
+        <span title={log.details || ""} className="block max-w-xs truncate">
+          {log.details || "—"}
+        </span>
+      </td>
+      <td className="px-6 py-3 text-xs font-medium text-white/50">
+        {log.log_time ? new Date(log.log_time).toLocaleString() : "—"}
+      </td>
+    </tr>
+  );
+
+  const renderLoginRow = (log) => (
+    <tr
+      key={log.id ?? `${log.username}-${log.attempt_time}`}
+      className="transition hover:bg-white/5"
+    >
+      <td className="px-6 py-3 text-sm font-medium text-white">
+        {log.username || "—"}
+      </td>
+      <td className="px-6 py-3 text-sm">
+        <span
+          className={log.success ? statusBadge.success : statusBadge.danger}
+        >
+          {log.success ? "Success" : "Failed"}
+        </span>
+      </td>
+      <td className="px-6 py-3 text-sm font-mono text-white/70">
+        {log.ip_address || "—"}
+      </td>
+      <td className="px-6 py-3 text-xs font-medium text-white/50">
+        {log.attempt_time ? new Date(log.attempt_time).toLocaleString() : "—"}
+      </td>
+    </tr>
+  );
+
+  const renderScanRow = (log) => (
+    <tr
+      key={log.id ?? `${log.serial_number}-${log.scan_time}`}
+      className="transition hover:bg-white/5"
+    >
+      <td className="px-6 py-3 text-sm font-mono text-white">
+        {log.serial_number || "—"}
+      </td>
+      <td className="px-6 py-3 text-sm text-white/80">
+        {log.username || "Consumer"}
+      </td>
+      <td className="px-6 py-3 text-sm text-white/60">
+        {log.location || "Unknown"}
+      </td>
+      <td className="px-6 py-3 text-sm">
+        <span
+          className={
+            log.is_authentic ? statusBadge.success : statusBadge.danger
+          }
+        >
+          {log.is_authentic ? "Authentic" : "Counterfeit"}
+        </span>
+      </td>
+      <td className="px-6 py-3 text-sm">
+        {log.is_suspicious ? (
+          <span className={statusBadge.warning}>Flagged</span>
+        ) : (
+          <span className="text-white/40">—</span>
+        )}
+      </td>
+      <td className="px-6 py-3 text-xs font-medium text-white/50">
+        {log.scan_time ? new Date(log.scan_time).toLocaleString() : "—"}
+      </td>
+    </tr>
+  );
+
+  const renderRows = () => {
+    if (loading) {
+      return (
+        <tr>
+          <td
+            colSpan={columnCount}
+            className="px-6 py-16 text-center text-white/60"
+          >
+            <div className="inline-flex items-center gap-3">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <span>Loading logs…</span>
             </div>
+          </td>
+        </tr>
+      );
+    }
 
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
-              {/* Log Type Selector */}
+    if (!logs.length) {
+      return (
+        <tr>
+          <td
+            colSpan={columnCount}
+            className="px-6 py-16 text-center text-white/50"
+          >
+            <div className="space-y-3">
+              <span className="text-4xl">📭</span>
               <div className="space-y-1">
-                <label className="text-xs text-gray-400 uppercase font-medium">
-                  Log Type
-                </label>
-                <select
-                  value={logType}
-                  onChange={(e) => setLogType(e.target.value)}
-                  className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                >
-                  <option value="activity">Activity Logs</option>
-                  <option value="login">Login Attempts</option>
-                  <option value="scan">Product Scans</option>
-                </select>
-              </div>
-
-              {/* Username Filter */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-400 uppercase font-medium">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  placeholder="Filter by username"
-                  value={filters.username}
-                  onChange={(e) =>
-                    setFilters({ ...filters, username: e.target.value })
-                  }
-                  className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                />
-              </div>
-
-              {/* Days Filter */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-400 uppercase font-medium">
-                  Time Period
-                </label>
-                <select
-                  value={filters.days}
-                  onChange={(e) =>
-                    setFilters({ ...filters, days: parseInt(e.target.value) })
-                  }
-                  className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                >
-                  <option value={7}>Last 7 days</option>
-                  <option value={30}>Last 30 days</option>
-                  <option value={90}>Last 90 days</option>
-                  <option value={365}>Last year</option>
-                </select>
-              </div>
-
-              {/* Conditional Filters based on log type */}
-              {logType === "login" && (
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase font-medium">
-                    Login Status
-                  </label>
-                  <select
-                    value={filters.success}
-                    onChange={(e) =>
-                      setFilters({ ...filters, success: e.target.value })
-                    }
-                    className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                  >
-                    <option value="">All attempts</option>
-                    <option value="true">Successful only</option>
-                    <option value="false">Failed only</option>
-                  </select>
-                </div>
-              )}
-
-              {logType === "scan" && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-xs text-gray-400 uppercase font-medium">
-                      Serial Number
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Serial number"
-                      value={filters.serialNumber}
-                      onChange={(e) =>
-                        setFilters({ ...filters, serialNumber: e.target.value })
-                      }
-                      className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-gray-400 uppercase font-medium">
-                      Authenticity
-                    </label>
-                    <select
-                      value={filters.isAuthentic}
-                      onChange={(e) =>
-                        setFilters({ ...filters, isAuthentic: e.target.value })
-                      }
-                      className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                    >
-                      <option value="">All scans</option>
-                      <option value="true">Authentic only</option>
-                      <option value="false">Counterfeit only</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              {logType === "activity" && (
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase font-medium">
-                    Action Type
-                  </label>
-                  <select
-                    value={filters.action}
-                    onChange={(e) =>
-                      setFilters({ ...filters, action: e.target.value })
-                    }
-                    className="w-full bg-gray-800 text-white px-3 py-2 rounded border border-gray-700 focus:border-blue-400 focus:outline-none transition-colors"
-                  >
-                    <option value="">All actions</option>
-                    <option value="add_product">Add Product</option>
-                    <option value="delete_user">Delete User</option>
-                    <option value="login">Login</option>
-                    <option value="register">Register</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Download Button */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-400 uppercase font-medium">
-                  Export
-                </label>
-                <button
-                  onClick={handleDownloadLogs}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center justify-center space-x-2 transition-colors"
-                >
-                  <DownloadIcon />
-                  <span>CSV</span>
-                </button>
+                <p className="text-base font-semibold text-white/80">
+                  No logs match the current filters
+                </p>
+                <p className="text-sm text-white/60">
+                  Adjust the filters or expand the time window to explore more
+                  activity.
+                </p>
               </div>
             </div>
+          </td>
+        </tr>
+      );
+    }
 
-            {/* Active Filters Display */}
-            {(filters.username ||
-              filters.success ||
-              filters.isAuthentic ||
-              filters.action ||
-              filters.serialNumber) && (
-              <div className="mt-4 p-3 bg-gray-800 bg-opacity-50 rounded-lg">
-                <div className="text-sm text-gray-400 mb-2">
-                  Active Filters:
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {filters.username && (
-                    <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs">
-                      User: {filters.username}
-                    </span>
-                  )}
-                  {filters.success && (
-                    <span className="bg-green-600 text-white px-2 py-1 rounded text-xs">
-                      Status:{" "}
-                      {filters.success === "true" ? "Success" : "Failed"}
-                    </span>
-                  )}
-                  {filters.isAuthentic && (
-                    <span className="bg-purple-600 text-white px-2 py-1 rounded text-xs">
-                      Authenticity:{" "}
-                      {filters.isAuthentic === "true"
-                        ? "Authentic"
-                        : "Counterfeit"}
-                    </span>
-                  )}
-                  {filters.action && (
-                    <span className="bg-yellow-600 text-white px-2 py-1 rounded text-xs">
-                      Action: {filters.action}
-                    </span>
-                  )}
-                  {filters.serialNumber && (
-                    <span className="bg-indigo-600 text-white px-2 py-1 rounded text-xs">
-                      Serial: {filters.serialNumber}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+    if (logType === "activity") {
+      return logs.map((log) => renderActivityRow(log));
+    }
+    if (logType === "login") {
+      return logs.map((log) => renderLoginRow(log));
+    }
+    return logs.map((log) => renderScanRow(log));
+  };
 
-          {/* Logs Table */}
-          <div className="bg-gray-900 bg-opacity-80 backdrop-blur-lg rounded-xl shadow-lg border border-gray-800">
-            <div className="p-6 border-b border-gray-700">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold text-white">
-                  {logType === "activity" && "Activity Logs"}
-                  {logType === "login" && "Login Attempts"}
-                  {logType === "scan" && "Product Scans"}
-                </h3>
-                <div className="flex items-center space-x-4 text-sm text-gray-400">
-                  <span>Showing {logs.length} records</span>
-                  {loading && (
-                    <div className="animate-spin h-4 w-4 border-2 border-blue-400 border-t-transparent rounded-full"></div>
-                  )}
-                </div>
-              </div>
-            </div>
+  const topScans = dailyAnalytics.scans.slice(0, 7);
+  const topLogins = dailyAnalytics.logins.slice(0, 7);
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead className="sticky top-0 bg-gray-800 bg-opacity-80">
-                  <tr>
-                    {logType === "activity" && (
-                      <>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          User
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Action
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Target
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Details
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Time
-                        </th>
-                      </>
-                    )}
-                    {logType === "login" && (
-                      <>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          User
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Success
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          IP
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Time
-                        </th>
-                      </>
-                    )}
-                    {logType === "scan" && (
-                      <>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Product
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          User
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Location
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Authentic
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Suspicious
-                        </th>
-                        <th className="px-4 py-3 text-left text-gray-400 font-medium uppercase text-xs">
-                          Time
-                        </th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="text-center text-gray-500 py-12"
-                      >
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="animate-spin h-6 w-6 border-2 border-blue-400 border-t-transparent rounded-full"></div>
-                          <span>Loading logs...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : logs.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="text-center text-gray-500 py-12"
-                      >
-                        <div className="text-4xl mb-2">📋</div>
-                        <p>No logs found matching your criteria</p>
-                        <p className="text-sm mt-1">
-                          Try adjusting your filters or time period
-                        </p>
-                      </td>
-                    </tr>
+  const renderDailyCard = (title, description, dataset, renderMeta) => (
+    <GlassCard className="space-y-4 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold text-white tracking-tight">
+            {title}
+          </h3>
+          <p className="text-sm text-white/60">{description}</p>
+        </div>
+        {renderMeta ? renderMeta(dataset) : null}
+      </div>
+      {dataset.length ? (
+        <div className="space-y-3">
+          {dataset.map((day) => {
+            const dateLabel = new Date(day.date).toLocaleDateString();
+            const totalValue =
+              "authentic_scans" in day
+                ? Number(day.total_scans ?? 0)
+                : Number(day.total_attempts ?? 0);
+            const totalLabel = Number.isFinite(totalValue)
+              ? totalValue.toLocaleString()
+              : "0";
+            return (
+              <div
+                key={day.date}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-white/80">
+                    {dateLabel}
+                  </span>
+                  <span className="text-sm font-semibold text-white">
+                    {totalLabel}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-3 text-xs text-white/60">
+                  {"authentic_scans" in day ? (
+                    <>
+                      <span className="font-medium text-emerald-200">
+                        Authentic {day.authentic_scans ?? 0}
+                      </span>
+                      <span className="font-medium text-rose-200">
+                        Counterfeit {day.counterfeit_scans ?? 0}
+                      </span>
+                      <span className="font-medium text-amber-200">
+                        Suspicious {day.suspicious_scans ?? 0}
+                      </span>
+                    </>
                   ) : (
                     <>
-                      {logType === "activity" &&
-                        logs.map((log, index) => (
-                          <tr
-                            key={log.id || index}
-                            className="hover:bg-gray-800 transition-colors"
-                          >
-                            <td className="px-4 py-3 text-white">
-                              {log.username}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {log.action}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-300">
-                              {log.target}
-                            </td>
-                            <td className="px-4 py-3 text-gray-300 max-w-xs truncate">
-                              {log.details}
-                            </td>
-                            <td className="px-4 py-3 text-gray-400 text-sm">
-                              {new Date(log.log_time).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      {logType === "login" &&
-                        logs.map((log, index) => (
-                          <tr
-                            key={log.id || index}
-                            className="hover:bg-gray-800 transition-colors"
-                          >
-                            <td className="px-4 py-3 text-white">
-                              {log.username}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  log.success
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {log.success ? "Success" : "Failed"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-gray-300 font-mono text-sm">
-                              {log.ip_address}
-                            </td>
-                            <td className="px-4 py-3 text-gray-400 text-sm">
-                              {new Date(log.attempt_time).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      {logType === "scan" &&
-                        logs.map((log, index) => (
-                          <tr
-                            key={log.id || index}
-                            className="hover:bg-gray-800 transition-colors"
-                          >
-                            <td className="px-4 py-3 text-white font-mono text-sm">
-                              {log.serial_number}
-                            </td>
-                            <td className="px-4 py-3 text-gray-300">
-                              {log.username}
-                            </td>
-                            <td className="px-4 py-3 text-gray-300">
-                              {log.location}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                  log.is_authentic
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {log.is_authentic ? "Authentic" : "Counterfeit"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {log.is_suspicious && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                  Suspicious
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-gray-400 text-sm">
-                              {new Date(log.scan_time).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
+                      <span className="font-medium text-emerald-200">
+                        Success {day.successful_logins ?? 0}
+                      </span>
+                      <span className="font-medium text-rose-200">
+                        Failed {day.failed_logins ?? 0}
+                      </span>
+                      <span className="font-medium text-sky-200">
+                        Users {day.unique_users ?? 0}
+                      </span>
                     </>
                   )}
-                </tbody>
-              </table>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-indigo-400"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        "authentic_scans" in day
+                          ? ((day.authentic_scans ?? 0) /
+                              Math.max(day.total_scans ?? 1, 1)) *
+                              100
+                          : ((day.successful_logins ?? 0) /
+                              Math.max(day.total_attempts ?? 1, 1)) *
+                              100
+                      ).toFixed(2)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex h-40 flex-col items-center justify-center space-y-2 text-white/50">
+          <span className="text-3xl">📉</span>
+          <span className="text-sm">No data in this window</span>
+        </div>
+      )}
+    </GlassCard>
+  );
+
+  return (
+    <AdminShell
+      title="Audit Command Center"
+      subtitle="Monitor every privileged action, login attempt, and product verification with a unified security signal."
+      meta={metaSummary}
+      actions={headerActions}
+      toolbar={filterToolbar}
+    >
+      <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-10">
+        <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {summaryCards.map((card) => (
+            <GlassCard key={card.key} className="relative overflow-hidden p-6">
+              <span
+                className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-3xl ${card.accent}`}
+              />
+              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/40">
+                {card.label}
+              </p>
+              <p className="mt-3 text-3xl font-semibold text-white">
+                {card.value}
+              </p>
+              {card.helper ? (
+                <p className="mt-3 text-sm text-white/60">{card.helper}</p>
+              ) : null}
+            </GlassCard>
+          ))}
+        </section>
+        <section className="grid gap-6 xl:grid-cols-2">
+          {renderDailyCard(
+            `Scan telemetry (${filters.days}d)`,
+            "Breakdown of authentic vs counterfeit scans by day.",
+            topScans,
+            (dataset) => (
+              <span className="rounded-full border border-emerald-300/30 bg-emerald-400/15 px-3 py-1 text-xs font-semibold text-emerald-100">
+                {dataset
+                  .reduce(
+                    (sum, item) =>
+                      sum + Number(item.total_scans ?? item.total ?? 0),
+                    0
+                  )
+                  .toLocaleString()}{" "}
+                total
+              </span>
+            )
+          )}
+          {renderDailyCard(
+            `Access telemetry (${filters.days}d)`,
+            "Success vs failure rates for identity validations.",
+            topLogins,
+            (dataset) => (
+              <span className="rounded-full border border-sky-300/30 bg-sky-400/15 px-3 py-1 text-xs font-semibold text-sky-100">
+                {dataset
+                  .reduce(
+                    (sum, item) =>
+                      sum + Number(item.total_attempts ?? item.total ?? 0),
+                    0
+                  )
+                  .toLocaleString()}{" "}
+                attempts
+              </span>
+            )
+          )}
+        </section>
+
+        <GlassCard className="overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
+            <div>
+              <h2 className="text-xl font-semibold text-white tracking-tight">
+                {LOG_TYPE_LABELS[logType]}
+              </h2>
+              <p className="text-sm text-white/60">
+                {logs.length.toLocaleString()} records in the current view
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className={`${glassButtonClass} ${
+                refreshing ? "cursor-wait opacity-70" : ""
+              }`}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <span className="text-base">⟳</span>
+              )}
+              <span>{refreshing ? "Refreshing" : "Reload"}</span>
+            </button>
           </div>
-        </main>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-white/10">
+              <thead className="bg-white/5">{renderTableHeader()}</thead>
+              <tbody className="divide-y divide-white/5">{renderRows()}</tbody>
+            </table>
+          </div>
+        </GlassCard>
       </div>
-    </div>
+    </AdminShell>
   );
 };
 

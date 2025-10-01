@@ -1,783 +1,604 @@
-import React, { useState, useEffect, useContext, useMemo } from "react";
-import {
-  Box,
-  Paper,
-  Typography,
-  Grid,
-  Card,
-  CardContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Button,
-  TextField,
-  Tab,
-  Tabs,
-  Alert,
-  Snackbar,
-  CircularProgress,
-} from "@mui/material";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
-import CssBaseline from "@mui/material/CssBaseline";
-import {
-  Email as EmailIcon,
-  Chat as ChatIcon,
-  Notifications as NotificationsIcon,
-  Send as SendIcon,
-} from "@mui/icons-material";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { toast } from "react-toastify";
 import AuthContext from "../context/AuthProvider";
-import LiveChat from "./LiveChat";
-import { Link } from "react-router-dom";
 import { useConfig } from "../context/ConfigContext";
-import logoImg from "../img/logo.png";
-import profilePic from "../img/profile.jpeg";
+import LiveChat from "./LiveChat";
+import AdminShell from "./admin/AdminShell";
+import {
+  GlassCard,
+  GradientBorderCard,
+  glassButtonClass,
+  SectionHeader,
+  Divider,
+} from "./admin/ui";
 
-// Sidebar icons (same as Admin)
-const DashboardIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M3 13h2v-2H3v2zm4 0h2v-6H7v6zm4 0h2V7h-2v6zm4 0h2v-4h-2v4zm4 0h2v-2h-2v2z"
-    />
-  </svg>
-);
-const FactoryIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M3 21V9l7-4v4l7-4v16H3z"
-    />
-  </svg>
-);
-const TruckIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M9 17V5a1 1 0 011-1h5a1 1 0 011 1v12m-7 0a2 2 0 104 0m-4 0H5a2 2 0 00-2 2v1a1 1 0 001 1h1a1 1 0 001-1v-1m10 0a2 2 0 104 0m-4 0h2a2 2 0 002-2v-5a1 1 0 00-1-1h-5a1 1 0 00-1 1v5z"
-    />
-  </svg>
-);
-const StoreIcon = () => (
-  <svg
-    className="w-5 h-5 mr-2"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M4 21v-2a4 4 0 014-4h8a4 4 0 014 4v2M16 3a4 4 0 00-8 0v1a4 4 0 01-4 4v2a4 4 0 004 4h8a4 4 0 004-4V8a4 4 0 00-4-4V3z"
-    />
-  </svg>
-);
-const BellIcon = () => (
-  <span className="inline-block w-5 h-5 bg-gray-400 rounded-full" />
-);
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString();
+  } catch (error) {
+    return value;
+  }
+};
 
-const SidebarLink = ({ icon, label, to, active }) => (
-  <Link
-    to={to}
-    className={`flex items-center px-4 py-2 rounded-lg text-gray-200 hover:bg-gray-800 hover:text-white transition ${
-      active ? "bg-gray-800" : ""
-    }`}
-  >
-    {icon}
-    <span className="ml-2">{label}</span>
-  </Link>
-);
-
-const SIDEBAR_LINKS = [
-  { icon: <DashboardIcon />, label: "Dashboard", to: "/admin" },
-  {
-    icon: <FactoryIcon />,
-    label: "Manufacturers",
-    to: "/manage-account?role=manufacturer",
-  },
-  {
-    icon: <TruckIcon />,
-    label: "Suppliers",
-    to: "/manage-account?role=supplier",
-  },
-  {
-    icon: <StoreIcon />,
-    label: "Retailers",
-    to: "/manage-account?role=retailer",
-  },
-  { icon: <DashboardIcon />, label: "Support", to: "/support-dashboard" },
-  { icon: <DashboardIcon />, label: "2FA Settings", to: "/2fa-settings" },
-];
+const deriveConversationUser = (conversationKey) =>
+  conversationKey?.startsWith("conv:user:")
+    ? conversationKey.replace("conv:user:", "")
+    : conversationKey || "";
 
 const SupportDashboard = () => {
   const { auth } = useContext(AuthContext);
   const { apiBaseUrl } = useConfig();
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
-  const [testEmail, setTestEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
-  const [showChat, setShowChat] = useState(false);
   const [conversations, setConversations] = useState([]);
-  const [activeConversation, setActiveConversation] = useState(null); // conversation_key
+  const [activeConversation, setActiveConversation] = useState(null);
+  const [showLiveChat, setShowLiveChat] = useState(false);
   const [targetUsername, setTargetUsername] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [systemMessage, setSystemMessage] = useState("");
+  const [loadingEmail, setLoadingEmail] = useState(false);
+  const [loadingSystem, setLoadingSystem] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  const darkTheme = useMemo(
-    () => createTheme({ palette: { mode: "dark" } }),
-    []
+  const notificationStats = useMemo(() => {
+    const buckets = { sent: 0, failed: 0, queued: 0 };
+    notifications.forEach((item) => {
+      const key = item.status;
+      if (key && buckets[key] !== undefined) {
+        buckets[key] += 1;
+      }
+    });
+    return buckets;
+  }, [notifications]);
+
+  const metaSummary = useMemo(
+    () => [
+      {
+        label: "Notifications",
+        value: `${notifications.length.toString().padStart(2, "0")}`,
+        key: "notifications",
+      },
+      {
+        label: "Conversations",
+        value: `${conversations.length.toString().padStart(2, "0")}`,
+        key: "conversations",
+      },
+      {
+        label: "Active thread",
+        value: deriveConversationUser(activeConversation) || "None",
+        key: "thread",
+      },
+      {
+        label: "Updated",
+        value: lastRefreshed
+          ? new Date(lastRefreshed).toLocaleTimeString()
+          : "Pending",
+        key: "refreshed",
+      },
+    ],
+    [activeConversation, conversations.length, lastRefreshed, notifications.length]
   );
 
-  useEffect(() => {
-    loadNotifications();
-  }, []);
-
-  useEffect(() => {
-    loadChatHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConversation]);
-
-  useEffect(() => {
-    if (auth?.role === "admin") loadConversations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const response = await fetch(
         `${apiBaseUrl}/support/notifications?limit=100`
       );
       const data = await response.json();
-      if (data.success) setNotifications(data.notifications);
+      if (data?.success) {
+        setNotifications(data.notifications || []);
+        setLastRefreshed(Date.now());
+      } else {
+        throw new Error(data?.message || "Unable to load notifications");
+      }
     } catch (error) {
-      console.error("Error loading notifications:", error);
+      console.error("Failed to load notifications", error);
+      toast.error(error.message || "Failed to load notifications");
     }
-  };
+  }, [apiBaseUrl]);
 
-  const loadChatHistory = async () => {
-    try {
-      const params = activeConversation
-        ? `?limit=100&conversationKey=${encodeURIComponent(activeConversation)}`
-        : "?limit=100";
-      const response = await fetch(
-        `${apiBaseUrl}/support/chat-history${params}`
-      );
-      const data = await response.json();
-      if (data.success) setChatHistory(data.messages);
-    } catch (error) {
-      console.error("Error loading chat history:", error);
-    }
-  };
-
-  const loadConversations = async () => {
+  const fetchConversations = useCallback(async () => {
+    if (auth?.role !== "admin") return;
     try {
       const response = await fetch(
         `${apiBaseUrl}/support/conversations?limit=100`
       );
       const data = await response.json();
-      if (data.success) setConversations(data.conversations);
-    } catch (e) {
-      console.error("Error loading conversations:", e);
+      if (data?.success) {
+        setConversations(data.conversations || []);
+      } else {
+        throw new Error(data?.message || "Unable to load conversations");
+      }
+    } catch (error) {
+      console.error("Failed to load conversations", error);
+      toast.error(error.message || "Failed to load conversations");
     }
-  };
+  }, [apiBaseUrl, auth?.role]);
 
-  const sendTestEmail = async () => {
-    if (!testEmail) {
-      setSnackbar({
-        open: true,
-        message: "Please enter an email address",
-        severity: "warning",
-      });
+  const fetchChatHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const params = activeConversation
+        ? `?limit=100&conversationKey=${encodeURIComponent(
+            activeConversation
+          )}`
+        : "?limit=100";
+      const response = await fetch(
+        `${apiBaseUrl}/support/chat-history${params}`
+      );
+      const data = await response.json();
+      if (data?.success) {
+        setChatHistory(data.messages || []);
+      } else {
+        throw new Error(data?.message || "Unable to load chat history");
+      }
+    } catch (error) {
+      console.error("Failed to load chat history", error);
+      toast.error(error.message || "Failed to load chat history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [activeConversation, apiBaseUrl]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    fetchChatHistory();
+  }, [fetchChatHistory]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  const handleSendTestEmail = async (event) => {
+    event.preventDefault();
+    if (!testEmail.trim()) {
+      toast.error("Enter a recipient email address");
       return;
     }
-    setLoading(true);
+    setLoadingEmail(true);
     try {
       const response = await fetch(`${apiBaseUrl}/support/test-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: testEmail }),
+        body: JSON.stringify({ email: testEmail.trim() }),
       });
       const data = await response.json();
-      setSnackbar({
-        open: true,
-        message: data.message,
-        severity: data.success ? "success" : "error",
-      });
-      if (data.success) {
+      if (data?.success) {
+        toast.success(data.message || "Test email dispatched");
         setTestEmail("");
-        loadNotifications();
+        fetchNotifications();
+      } else {
+        throw new Error(data?.message || "Unable to send test email");
       }
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: "Error sending test email",
-        severity: "error",
-      });
+      console.error("Failed to send test email", error);
+      toast.error(error.message || "Failed to send test email");
     } finally {
-      setLoading(false);
+      setLoadingEmail(false);
     }
   };
 
-  const sendSystemMessage = async (message) => {
+  const handleSendSystemMessage = async (event) => {
+    event.preventDefault();
+    if (!systemMessage.trim()) {
+      toast.error("Message body is required");
+      return;
+    }
+    setLoadingSystem(true);
     try {
       const response = await fetch(`${apiBaseUrl}/support/system-message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message: systemMessage.trim() }),
       });
       const data = await response.json();
-      setSnackbar({
-        open: true,
-        message: data.message,
-        severity: data.success ? "success" : "error",
-      });
+      if (data?.success) {
+        toast.success(data.message || "System message broadcasted");
+        setSystemMessage("");
+        fetchNotifications();
+      } else {
+        throw new Error(data?.message || "Unable to send message");
+      }
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: "Error sending system message",
-        severity: "error",
-      });
+      console.error("Failed to send system message", error);
+      toast.error(error.message || "Failed to send system message");
+    } finally {
+      setLoadingSystem(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "sent":
-        return "success";
-      case "failed":
-        return "error";
-      case "queued":
-        return "warning";
-      default:
-        return "default";
-    }
+  const handleConversationSelect = (conversationKey) => {
+    setActiveConversation(conversationKey);
+    const resolvedUser = deriveConversationUser(conversationKey);
+    setTargetUsername(resolvedUser);
+    setShowLiveChat(true);
   };
 
-  const formatDate = (dateString) => new Date(dateString).toLocaleString();
+  const handleStartDirectConversation = () => {
+    if (!targetUsername.trim()) {
+      toast.error("Provide a username to open a conversation");
+      return;
+    }
+    const conversationKey = `conv:user:${targetUsername.trim()}`;
+    handleConversationSelect(conversationKey);
+  };
 
-  const renderEmailNotifications = () => (
-    <Box>
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <Card
-            elevation={0}
-            sx={{
-              background: "rgba(17,25,40,0.6)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 3,
-            }}
-          >
-            <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                <EmailIcon color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">Test Email</Typography>
-              </Box>
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Email Address"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  type="email"
-                  size="small"
-                />
-                <Button
-                  variant="contained"
-                  onClick={sendTestEmail}
-                  disabled={loading}
-                  startIcon={
-                    loading ? <CircularProgress size={16} /> : <SendIcon />
-                  }
-                >
-                  Send
-                </Button>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Card
-            elevation={0}
-            sx={{
-              background: "rgba(17,25,40,0.6)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 3,
-            }}
-          >
-            <CardContent>
-              <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                <NotificationsIcon color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">Email Statistics</Typography>
-              </Box>
-              <Grid container spacing={2}>
-                <Grid item xs={4}>
-                  <Typography variant="h4" color="success.main">
-                    {notifications.filter((n) => n.status === "sent").length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Sent
-                  </Typography>
-                </Grid>
-                <Grid item xs={4}>
-                  <Typography variant="h4" color="error.main">
-                    {notifications.filter((n) => n.status === "failed").length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Failed
-                  </Typography>
-                </Grid>
-                <Grid item xs={4}>
-                  <Typography variant="h4" color="warning.main">
-                    {notifications.filter((n) => n.status === "queued").length}
-                  </Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    Queued
-                  </Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Paper
-        elevation={0}
-        sx={{
-          background: "rgba(17,25,40,0.6)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 3,
-        }}
-      >
-        <Box sx={{ p: 2 }}>
-          <Typography variant="h6" sx={{ mb: 2, color: "#fff" }}>
-            Notification History
-          </Typography>
-          <TableContainer>
-            <Table
-              size="small"
-              sx={{
-                "& thead th": {
-                  backgroundColor: "rgba(255,255,255,0.04)",
-                  color: "#e5e7eb",
-                },
-                "& tbody tr:hover": {
-                  backgroundColor: "rgba(255,255,255,0.03)",
-                },
-                "& td, & th": {
-                  borderColor: "rgba(255,255,255,0.08)",
-                  color: "#e5e7eb",
-                },
-              }}
-            >
-              <TableHead>
-                <TableRow>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Recipient</TableCell>
-                  <TableCell>Subject</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Created</TableCell>
-                  <TableCell>Sent</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {notifications.map((notification) => (
-                  <TableRow key={notification.id}>
-                    <TableCell>
-                      <Chip
-                        label={notification.type || "—"}
-                        size="small"
-                        color="info"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>{notification.recipient || "—"}</TableCell>
-                    <TableCell>{notification.subject || "—"}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={notification.status}
-                        color={getStatusColor(notification.status)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {notification.created_at
-                        ? formatDate(notification.created_at)
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {notification.sent_at
-                        ? formatDate(notification.sent_at)
-                        : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      </Paper>
-    </Box>
-  );
-
-  const renderChatSupport = () => (
-    <Box>
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={4}>
-          {auth?.role === "admin" && (
-            <Card
-              elevation={0}
-              sx={{
-                background: "rgba(17,25,40,0.6)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: 3,
-              }}
-            >
-              <CardContent>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    mb: 2,
-                  }}
-                >
-                  <Typography variant="h6">Conversations</Typography>
-                  <Button size="small" onClick={loadConversations}>
-                    Refresh
-                  </Button>
-                </Box>
-                <Box sx={{ display: "flex", gap: 1, mb: 1 }}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    label="Start with username"
-                    value={targetUsername}
-                    onChange={(e) => setTargetUsername(e.target.value)}
-                  />
-                  <Button
-                    variant="contained"
-                    size="small"
-                    disabled={!targetUsername}
-                    onClick={() => {
-                      const key = `conv:user:${targetUsername}`;
-                      setActiveConversation(key);
-                      setShowChat(true);
-                    }}
-                  >
-                    Open
-                  </Button>
-                </Box>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>User</TableCell>
-                        <TableCell>Last Message</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {conversations.map((c) => {
-                        const user = c.conversation_key.replace(
-                          "conv:user:",
-                          ""
-                        );
-                        return (
-                          <TableRow
-                            key={c.conversation_key}
-                            hover
-                            selected={activeConversation === c.conversation_key}
-                            onClick={() => {
-                              setActiveConversation(c.conversation_key);
-                              setTargetUsername(user);
-                              setShowChat(true);
-                            }}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <TableCell>{user}</TableCell>
-                            <TableCell>
-                              {new Date(c.last_message_at).toLocaleString()}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </CardContent>
-            </Card>
-          )}
-        </Grid>
-        <Grid item xs={12} md={8}>
-          <Card
-            elevation={0}
-            sx={{
-              background: "rgba(17,25,40,0.6)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 3,
-            }}
-          >
-            <CardContent>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  mb: 2,
-                }}
+  return (
+    <AdminShell
+      title="Support Control Center"
+      subtitle="Monitor outbound messaging, triage conversations, and intervene in real time across the customer support surface."
+      meta={metaSummary}
+      actions={
+        <button
+          type="button"
+          onClick={() => {
+            fetchNotifications();
+            fetchChatHistory();
+            fetchConversations();
+          }}
+          className={glassButtonClass}
+        >
+          Refresh data
+        </button>
+      }
+    >
+      <div className="mx-auto flex w-full max-w-[1300px] flex-col gap-8">
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <GlassCard className="p-6" tone="highlight">
+            <SectionHeader
+              title="Email operations"
+              subtitle="Trigger test dispatches and monitor aggregated delivery health."
+            />
+            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              <form
+                onSubmit={handleSendTestEmail}
+                className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5"
               >
-                <Box sx={{ display: "flex", alignItems: "center" }}>
-                  <ChatIcon color="primary" sx={{ mr: 1 }} />
-                  <Typography variant="h6">Live Chat Support</Typography>
-                </Box>
-                <Button
-                  variant="contained"
-                  onClick={() => setShowChat(!showChat)}
+                <p className="text-sm font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Test email
+                </p>
+                <p className="text-sm text-white/60">
+                  Verify SMTP configuration by dispatching a sample message to any recipient.
+                </p>
+                <input
+                  type="email"
+                  value={testEmail}
+                  onChange={(event) => setTestEmail(event.target.value)}
+                  placeholder="support@example.com"
+                  className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                  required
+                />
+                <button
+                  type="submit"
+                  className={`${glassButtonClass} w-full justify-center border-emerald-500/40 bg-emerald-500/10 hover:border-emerald-400/60 hover:bg-emerald-500/20 ${
+                    loadingEmail ? "cursor-wait opacity-70" : ""
+                  }`}
+                  disabled={loadingEmail}
                 >
-                  {showChat ? "Hide Chat" : "Open Chat"}
-                </Button>
-              </Box>
-              {showChat && (
-                <Box sx={{ mt: 2 }}>
+                  {loadingEmail ? "Sending…" : "Send test email"}
+                </button>
+              </form>
+              <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+                <p className="text-sm font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Delivery snapshot
+                </p>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-2xl bg-emerald-500/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-emerald-200/80">
+                      Sent
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-emerald-200">
+                      {notificationStats.sent}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-amber-500/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-amber-100/80">
+                      Queued
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-amber-100">
+                      {notificationStats.queued}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-rose-500/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-rose-100/80">
+                      Failed
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-rose-100">
+                      {notificationStats.failed}
+                    </p>
+                  </div>
+                </div>
+                <Divider />
+                <form onSubmit={handleSendSystemMessage} className="space-y-3">
+                  <p className="text-sm font-semibold uppercase tracking-[0.4em] text-white/50">
+                    System broadcast
+                  </p>
+                  <textarea
+                    value={systemMessage}
+                    onChange={(event) => setSystemMessage(event.target.value)}
+                    placeholder="Share an incident update or scheduled maintenance alert"
+                    className="min-h-[110px] w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className={`${glassButtonClass} w-full justify-center border-sky-500/40 bg-sky-500/10 hover:border-sky-400/60 hover:bg-sky-500/20 ${
+                      loadingSystem ? "cursor-wait opacity-70" : ""
+                    }`}
+                    disabled={loadingSystem}
+                  >
+                    {loadingSystem ? "Broadcasting…" : "Send system message"}
+                  </button>
+                </form>
+              </div>
+            </div>
+          </GlassCard>
+
+          <GradientBorderCard className="h-full">
+            <div className="flex h-full flex-col space-y-4">
+              <SectionHeader
+                title="Conversation directory"
+                subtitle="Escalate across live chat threads when teams need support."
+                actions={
+                  <button
+                    type="button"
+                    onClick={fetchConversations}
+                    className={`${glassButtonClass} text-xs`}
+                  >
+                    Refresh
+                  </button>
+                }
+              />
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Jump to user
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    value={targetUsername}
+                    onChange={(event) => setTargetUsername(event.target.value)}
+                    placeholder="username"
+                    className="min-w-[180px] flex-1 rounded-full border border-white/12 bg-white/10 px-4 py-2 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleStartDirectConversation}
+                    className={`${glassButtonClass} border-emerald-400/40 bg-emerald-500/10 hover:border-emerald-300/60 hover:bg-emerald-500/20`}
+                  >
+                    Open thread
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <ul className="h-full space-y-2 overflow-y-auto pr-1">
+                  {conversations.length === 0 ? (
+                    <li className="rounded-3xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-white/60">
+                      No recent conversations.
+                    </li>
+                  ) : (
+                    conversations.map((conversation) => {
+                      const userHandle = deriveConversationUser(
+                        conversation.conversation_key
+                      );
+                      const isActive =
+                        activeConversation === conversation.conversation_key;
+                      return (
+                        <li key={conversation.conversation_key}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleConversationSelect(
+                                conversation.conversation_key
+                              )
+                            }
+                            className={`flex w-full items-start justify-between rounded-3xl border px-4 py-3 text-left transition ${
+                              isActive
+                                ? "border-emerald-400/50 bg-emerald-500/15"
+                                : "border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10"
+                            }`}
+                          >
+                            <div>
+                              <p className="text-sm font-semibold text-white">
+                                {userHandle || "Unknown"}
+                              </p>
+                              <p className="mt-1 text-xs uppercase tracking-[0.3em] text-white/50">
+                                {conversation.message_preview || "New conversation"}
+                              </p>
+                            </div>
+                            <span className="text-xs text-white/40">
+                              {formatDateTime(conversation.last_message_at)}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </div>
+            </div>
+          </GradientBorderCard>
+        </div>
+
+        <GlassCard className="p-6">
+          <SectionHeader
+            title="Notification history"
+            subtitle="Every outbound touchpoint with delivery state and timestamps."
+            actions={
+              <button
+                type="button"
+                onClick={fetchNotifications}
+                className={`${glassButtonClass} text-xs`}
+              >
+                Refresh
+              </button>
+            }
+          />
+          <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
+            <table className="min-w-full divide-y divide-white/5 text-sm text-white/70">
+              <thead className="bg-white/5 text-[11px] uppercase tracking-[0.4em] text-white/50">
+                <tr>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-left">Recipient</th>
+                  <th className="px-4 py-3 text-left">Subject</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Created</th>
+                  <th className="px-4 py-3 text-left">Sent</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {notifications.length === 0 ? (
+                  <tr>
+                    <td
+                      className="px-4 py-8 text-center text-sm text-white/50"
+                      colSpan={6}
+                    >
+                      No notifications yet.
+                    </td>
+                  </tr>
+                ) : (
+                  notifications.map((item) => (
+                    <tr key={item.id} className="hover:bg-white/5">
+                      <td className="px-4 py-3">
+                        <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.3em] text-white/70">
+                          {item.type || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-white/80">
+                        {item.recipient || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-white/70">
+                        {item.subject || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] ${
+                            item.status === "sent"
+                              ? "bg-emerald-500/10 text-emerald-200"
+                              : item.status === "failed"
+                              ? "bg-rose-500/10 text-rose-200"
+                              : "bg-amber-500/10 text-amber-100"
+                          }`}
+                        >
+                          {item.status || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-white/60">
+                        {formatDateTime(item.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-white/60">
+                        {formatDateTime(item.sent_at)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-6">
+          <SectionHeader
+            title="Live chat threads"
+            subtitle="Review the latest 100 messages across the selected conversation."
+            actions={
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/50">
+                  {loadingHistory ? "Refreshing…" : "Auto-loaded"}
+                </span>
+                <button
+                  type="button"
+                  onClick={fetchChatHistory}
+                  className={`${glassButtonClass} text-xs`}
+                >
+                  Refresh
+                </button>
+              </div>
+            }
+          />
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Selected participant
+                </p>
+                <p className="mt-2 text-lg font-semibold text-white">
+                  {deriveConversationUser(activeConversation) || "Not selected"}
+                </p>
+                <p className="mt-1 text-sm text-white/60">
+                  Use the directory above to choose a participant and open the embedded chat console.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowLiveChat((prev) => !prev)}
+                  className={`${glassButtonClass} mt-4 w-full justify-center border-sky-500/40 bg-sky-500/10 hover:border-sky-400/60 hover:bg-sky-500/20`}
+                  disabled={!targetUsername}
+                >
+                  {showLiveChat ? "Hide chat console" : "Open chat console"}
+                </button>
+              </div>
+              {showLiveChat && (
+                <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-4">
                   <LiveChat
                     user={auth}
                     targetUsername={
                       auth?.role === "admin"
                         ? targetUsername ||
-                          (activeConversation
-                            ? activeConversation.replace("conv:user:", "")
-                            : "")
+                          deriveConversationUser(activeConversation)
                         : undefined
                     }
-                    onClose={() => setShowChat(false)}
+                    onClose={() => setShowLiveChat(false)}
                   />
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Paper
-        elevation={0}
-        sx={{
-          background: "rgba(17,25,40,0.6)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          borderRadius: 3,
-        }}
-      >
-        <Box sx={{ p: 2 }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            Chat History{" "}
-            {activeConversation
-              ? `(${activeConversation.replace("conv:user:", "")})`
-              : ""}
-          </Typography>
-          <TableContainer>
-            <Table
-              size="small"
-              sx={{
-                "& thead th": {
-                  backgroundColor: "rgba(255,255,255,0.04)",
-                  color: "#e5e7eb",
-                },
-                "& tbody tr:hover": {
-                  backgroundColor: "rgba(255,255,255,0.03)",
-                },
-                "& td, & th": {
-                  borderColor: "rgba(255,255,255,0.08)",
-                  color: "#e5e7eb",
-                },
-              }}
-            >
-              <TableHead>
-                <TableRow>
-                  <TableCell>User</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell>Message</TableCell>
-                  <TableCell>Time</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {chatHistory.map((message) => (
-                  <TableRow key={message.id}>
-                    <TableCell>{message.username}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={message.role}
-                        size="small"
-                        color={message.role === "admin" ? "error" : "primary"}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 300, wordBreak: "break-word" }}>
-                      {message.message}
-                    </TableCell>
-                    <TableCell>{formatDate(message.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      </Paper>
-    </Box>
-  );
-
-  return (
-    <div className="min-h-screen flex bg-gray-950 text-white">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-gray-900 border-r border-gray-800 sticky top-0 min-h-screen">
-        <div className="flex items-center justify-center h-16 border-b border-gray-800">
-          <img src={logoImg} alt="ProductGuard" className="h-10" />
-        </div>
-        <nav className="flex-1 px-2 py-4 space-y-2">
-          {SIDEBAR_LINKS.map((link) => (
-            <SidebarLink
-              key={link.label}
-              {...link}
-              active={link.to === "/support-dashboard"}
-            />
-          ))}
-        </nav>
-      </aside>
-
-      {/* Mobile Sidebar Toggle */}
-      <button
-        className="md:hidden fixed top-4 left-4 z-50 bg-gray-900 p-2 rounded"
-        onClick={() => setSidebarOpen((v) => !v)}
-      >
-        <span className="text-white">☰</span>
-      </button>
-
-      {/* Mobile Sidebar Drawer */}
-      {sidebarOpen && (
-        <aside className="fixed inset-y-0 left-0 z-40 w-64 bg-gray-900 border-r border-gray-800 flex flex-col md:hidden">
-          <div className="flex items-center justify-between h-16 border-b border-gray-800 px-4">
-            <img src={logoImg} alt="ProductGuard" className="h-10" />
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="text-white"
-            >
-              ✕
-            </button>
-          </div>
-          <nav className="flex-1 px-2 py-4 space-y-2">
-            {SIDEBAR_LINKS.map((link) => (
-              <SidebarLink
-                key={link.label}
-                {...link}
-                active={link.to === "/support-dashboard"}
-              />
-            ))}
-          </nav>
-        </aside>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-screen">
-        {/* Top Bar */}
-        <div className="sticky top-0 z-10 bg-gray-900 bg-opacity-80 backdrop-blur-lg flex items-center justify-between px-6 py-3 border-b border-gray-800">
-          <h1 className="text-2xl font-bold tracking-tight">
-            Support Dashboard
-          </h1>
-          <div className="flex items-center space-x-3">
-            <button className="text-gray-400 hover:text-white">
-              <BellIcon />
-            </button>
-            <img
-              src={profilePic}
-              className="h-8 w-8 rounded-full border-2 border-gray-700"
-              alt="Profile"
-            />
-            <Link
-              to="/login"
-              className="text-gray-400 hover:text-red-400 transition ml-2"
-            >
-              Logout
-            </Link>
-          </div>
-        </div>
-
-        {/* Content */}
-        <ThemeProvider theme={darkTheme}>
-          <CssBaseline />
-          <Box sx={{ p: 3 }}>
-            <Paper
-              className="border border-white/10 bg-white/10 backdrop-blur-xl rounded-2xl"
-              sx={{ mb: 3 }}
-              elevation={0}
-            >
-              <Tabs
-                value={activeTab}
-                onChange={(e, v) => setActiveTab(v)}
-                sx={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
-              >
-                <Tab label="Email Notifications" />
-                <Tab label="Chat Support" />
-              </Tabs>
-            </Paper>
-
-            <div className="space-y-4">
-              {activeTab === 0 && (
-                <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-3">
-                  {renderEmailNotifications()}
-                </div>
-              )}
-              {activeTab === 1 && (
-                <div className="rounded-2xl border border-white/10 bg-white/10 backdrop-blur-xl p-3">
-                  {renderChatSupport()}
                 </div>
               )}
             </div>
-
-            <Snackbar
-              open={snackbar.open}
-              autoHideDuration={6000}
-              onClose={() => setSnackbar({ ...snackbar, open: false })}
-            >
-              <Alert
-                onClose={() => setSnackbar({ ...snackbar, open: false })}
-                severity={snackbar.severity}
-              >
-                {snackbar.message}
-              </Alert>
-            </Snackbar>
-          </Box>
-        </ThemeProvider>
+            <div className="rounded-3xl border border-white/10 bg-white/5">
+              <div className="max-h-[420px] overflow-y-auto">
+                {chatHistory.length === 0 ? (
+                  <div className="px-6 py-10 text-center text-sm text-white/50">
+                    No messages in this window.
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-white/10">
+                    {chatHistory.map((entry) => (
+                      <li key={entry.id} className="px-6 py-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.35em] ${
+                                entry.role === "admin"
+                                  ? "bg-rose-500/10 text-rose-200"
+                                  : "bg-emerald-500/10 text-emerald-200"
+                              }`}
+                            >
+                              {entry.role}
+                            </span>
+                            <span className="text-sm font-semibold text-white">
+                              {entry.username}
+                            </span>
+                          </div>
+                          <span className="text-xs text-white/40">
+                            {formatDateTime(entry.created_at)}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-relaxed text-white/70">
+                          {entry.message}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </GlassCard>
       </div>
-    </div>
+    </AdminShell>
   );
 };
 

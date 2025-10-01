@@ -1,479 +1,437 @@
-import React, { useState, useEffect } from "react";
-import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  Switch,
-  FormControlLabel,
-  TextField,
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  CircularProgress,
-} from "@mui/material";
-import SecurityIcon from "@mui/icons-material/Security";
-import QrCodeIcon from "@mui/icons-material/QrCode";
+import { useEffect, useMemo, useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import QRCode from "qrcode.react";
+import { toast } from "react-toastify";
 import axios from "../../api/axios";
 import useAuth from "../../hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import AdminShell from "../admin/AdminShell";
+import {
+  GlassCard,
+  GradientBorderCard,
+  glassButtonClass,
+  Divider,
+  SectionHeader,
+} from "../admin/ui";
+
+const deriveOtpAuthUrl = (secret, username) => {
+  if (!secret || !username) return null;
+  const accountLabel = `${encodeURIComponent("ProductGuard")}%20(${encodeURIComponent(
+    username
+  )})`;
+  return `otpauth://totp/${accountLabel}?secret=${encodeURIComponent(
+    secret
+  )}&issuer=${encodeURIComponent("ProductGuard")}`;
+};
+
+const formatTimestamp = (value) =>
+  value ? new Date(value).toLocaleString() : "Not yet";
 
 const TwoFactorAuth = () => {
-  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [qrCode, setQrCode] = useState("");
-  const [secret, setSecret] = useState("");
-  const [verificationToken, setVerificationToken] = useState("");
-  const [password, setPassword] = useState("");
-  const [showSetupDialog, setShowSetupDialog] = useState(false);
-  const [showDisableDialog, setShowDisableDialog] = useState(false);
-  const [message, setMessage] = useState({ type: "", text: "" });
-  const [copied, setCopied] = useState(false);
-
   const { auth, setAuth } = useAuth();
   const navigate = useNavigate();
-  // Fallback otpauth URL for client-side QR if server doesn't return an image
-  const computedOtpAuthUrl =
-    secret && auth?.user
-      ? `otpauth://totp/${encodeURIComponent(
-          "ProductGuard"
-        )}%20(${encodeURIComponent(auth.user)})?secret=${encodeURIComponent(
-          secret
-        )}&issuer=${encodeURIComponent("ProductGuard")}`
-      : null;
+
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [setupSecret, setSetupSecret] = useState("");
+  const [setupQr, setSetupQr] = useState("");
+  const [setupUrl, setSetupUrl] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [disableCode, setDisableCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [loadingAction, setLoadingAction] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (auth.is2FAEnabled !== undefined) {
+    if (typeof auth?.is2FAEnabled === "boolean") {
       setIs2FAEnabled(auth.is2FAEnabled);
     }
-  }, [auth.is2FAEnabled]);
+  }, [auth?.is2FAEnabled]);
 
-  const handle2FASetup = async () => {
-    setLoading(true);
+  const metaPills = useMemo(
+    () => [
+      {
+        label: "Status",
+        value: is2FAEnabled ? "Enabled" : "Disabled",
+        key: "status",
+      },
+      {
+        label: "Secret generated",
+        value: setupSecret ? "Pending verification" : "—",
+        key: "secret",
+      },
+      {
+        label: "Account",
+        value: auth?.user || "Unknown",
+        key: "admin",
+      },
+      {
+        label: "Updated",
+        value: formatTimestamp(lastUpdated),
+        key: "updated",
+      },
+    ],
+    [auth?.user, is2FAEnabled, lastUpdated, setupSecret]
+  );
+
+  const handleGenerateSetupKit = async () => {
+    setLoadingAction(true);
     try {
       const response = await axios.post("/auth/2fa/setup");
       const payload = response?.data || {};
       const qr = payload.qrCode || payload.qr || payload?.data?.qrCode;
-      let sec = payload.secret || payload?.data?.secret;
-      const otpauthUrl = payload.otpauthUrl || payload?.data?.otpauthUrl;
-      // Try extracting secret from otpauth URL if provided
-      if (!sec && typeof otpauthUrl === "string") {
-        try {
-          const m = otpauthUrl.match(/secret=([^&]+)/i);
-          if (m && m[1]) sec = decodeURIComponent(m[1]);
-        } catch {}
+      let secret = payload.secret || payload?.data?.secret || "";
+      const url = payload.otpauthUrl || payload?.data?.otpauthUrl || "";
+
+      if (!secret && typeof url === "string") {
+        const match = url.match(/secret=([^&]+)/i);
+        if (match && match[1]) {
+          secret = decodeURIComponent(match[1]);
+        }
       }
 
-      if (sec) setSecret(sec);
-      if (qr) setQrCode(qr);
-
-      if (qr || sec || otpauthUrl) {
-        // Open dialog and also render inline fallback (via secret/qrCode state)
-        setShowSetupDialog(true);
-        setMessage({
-          type: "info",
-          text: "Scan the QR code with your authenticator app",
-        });
-      } else {
-        setMessage({
-          type: "error",
-          text:
-            payload.message ||
-            "Unexpected response from server while setting up 2FA",
-        });
+      if (!secret && !qr && !url) {
+        throw new Error(
+          payload.message || "Unexpected response while generating setup kit"
+        );
       }
+
+      setSetupSecret(secret || "");
+      setSetupQr(qr || "");
+      setSetupUrl(url || deriveOtpAuthUrl(secret, auth?.user));
+      setVerificationCode("");
+      toast.info("Authenticator setup generated. Scan and verify to enable.");
     } catch (error) {
-      setMessage({
-        type: "error",
-        text:
-          error.response?.data?.message ||
-          (error.response?.status === 401 || error.response?.status === 403
-            ? "Please sign in again to manage 2FA"
-            : "Failed to setup 2FA"),
-      });
+      console.error("Failed to generate setup kit", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to generate setup kit"
+      );
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
-  const handleVerify2FA = async () => {
-    setLoading(true);
+  const handleVerify = async () => {
+    if (verificationCode.length !== 6) {
+      toast.error("Enter the 6-digit code from your authenticator app");
+      return;
+    }
+    setLoadingAction(true);
     try {
       const response = await axios.post("/auth/2fa/verify", {
-        token: verificationToken,
+        token: verificationCode,
       });
-
-      if (response.data.success) {
+      if (response?.data?.success) {
         setIs2FAEnabled(true);
         setAuth((prev) => ({ ...prev, is2FAEnabled: true }));
-        setShowSetupDialog(false);
-        setVerificationToken("");
-        setMessage({ type: "success", text: "2FA enabled successfully!" });
+        setSetupSecret("");
+        setSetupQr("");
+        setSetupUrl("");
+        setVerificationCode("");
+        setLastUpdated(Date.now());
+        toast.success("Two-factor authentication enabled");
+      } else {
+        throw new Error(
+          response?.data?.message || "Unable to verify authentication code"
+        );
       }
     } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.response?.data?.message || "Invalid verification code",
-      });
+      console.error("Failed to verify 2FA", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Verification failed"
+      );
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
-  const handleDisable2FA = async () => {
-    setLoading(true);
+  const handleDisable = async () => {
+    if (!password.trim() || disableCode.length !== 6) {
+      toast.error("Provide your password and 6-digit code to disable");
+      return;
+    }
+    setLoadingAction(true);
     try {
       const response = await axios.post("/auth/2fa/disable", {
-        password,
-        token: verificationToken,
+        password: password.trim(),
+        token: disableCode,
       });
-
-      if (response.data.success) {
+      if (response?.data?.success) {
         setIs2FAEnabled(false);
         setAuth((prev) => ({ ...prev, is2FAEnabled: false }));
-        setShowDisableDialog(false);
         setPassword("");
-        setVerificationToken("");
-        setMessage({ type: "success", text: "2FA disabled successfully" });
+        setDisableCode("");
+        setLastUpdated(Date.now());
+        toast.success("Two-factor authentication disabled");
+      } else {
+        throw new Error(
+          response?.data?.message || "Unable to disable two-factor auth"
+        );
       }
     } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.response?.data?.message || "Failed to disable 2FA",
-      });
+      console.error("Failed to disable 2FA", error);
+      toast.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to disable two-factor authentication"
+      );
     } finally {
-      setLoading(false);
+      setLoadingAction(false);
     }
   };
 
-  const handleToggle2FA = () => {
-    if (is2FAEnabled) {
-      setShowDisableDialog(true);
-    } else {
-      handle2FASetup();
+  const handleCopySecret = async () => {
+    if (!setupSecret) return;
+    try {
+      await navigator.clipboard.writeText(setupSecret);
+      setCopied(true);
+      toast.success("Secret copied to clipboard");
+      setTimeout(() => setCopied(false), 1600);
+    } catch (error) {
+      console.error("Clipboard error", error);
+      toast.error("Unable to copy secret. Copy manually instead.");
     }
   };
 
-  const handleBack = () => {
-    navigate(-1);
-  };
+  const handleBack = () => navigate(-1);
+
+  if (!auth?.user) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        backgroundColor: "#0f172a",
-        padding: 4,
-      }}
+    <AdminShell
+      title="Two-Factor Authentication"
+  subtitle="Secure your ProductGuard account with time-based one-time passcodes."
+      meta={metaPills}
+      actions={
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleBack}
+            className={glassButtonClass}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerateSetupKit}
+            className={`${glassButtonClass} border-emerald-400/40 bg-emerald-500/10 hover:border-emerald-300/60 hover:bg-emerald-500/20 ${
+              loadingAction ? "cursor-wait opacity-70" : ""
+            }`}
+            disabled={loadingAction || is2FAEnabled}
+          >
+            {loadingAction && !is2FAEnabled
+              ? "Generating…"
+              : "Generate setup kit"}
+          </button>
+        </div>
+      }
     >
-      <Paper
-        elevation={3}
-        sx={{
-          maxWidth: 600,
-          margin: "0 auto",
-          padding: 4,
-          backgroundColor: "#1e293b",
-          color: "white",
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", mb: 3 }}>
-          <SecurityIcon sx={{ fontSize: 32, color: "#3b82f6", mr: 2 }} />
-          <Typography variant="h4" component="h1">
-            Two-Factor Authentication
-          </Typography>
-        </Box>
-
-        {message.text && (
-          <Alert
-            severity={message.type}
-            sx={{ mb: 3 }}
-            onClose={() => setMessage({ type: "", text: "" })}
-          >
-            {message.text}
-          </Alert>
-        )}
-
-        <Typography variant="body1" sx={{ mb: 3, color: "#cbd5e1" }}>
-          Two-factor authentication adds an extra layer of security to your
-          account. When enabled, you'll need to provide a code from your
-          authenticator app in addition to your password.
-        </Typography>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={is2FAEnabled}
-              onChange={handleToggle2FA}
-              disabled={loading}
-              color="primary"
-            />
-          }
-          label={
-            <Typography variant="h6">
-              {is2FAEnabled ? "2FA Enabled" : "Enable 2FA"}
-            </Typography>
-          }
-          sx={{ mb: 3 }}
-        />
-
-        {is2FAEnabled && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            Two-factor authentication is currently enabled for your account.
-          </Alert>
-        )}
-
-        {/* Inline fallback UI in case dialog fails to show due to portal issues */}
-        {!is2FAEnabled && (qrCode || secret) && (
-          <Box
-            sx={{
-              mb: 3,
-              p: 2,
-              border: "1px solid #334155",
-              borderRadius: 2,
-              backgroundColor: "#0b1020",
-            }}
-          >
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              Scan this QR code with your authenticator app
-            </Typography>
-            {qrCode && (
-              <Box sx={{ textAlign: "center", mb: 2 }}>
-                <img
-                  src={qrCode}
-                  alt="2FA QR Code"
-                  style={{ maxWidth: "100%" }}
-                />
-              </Box>
-            )}
-            {!qrCode && computedOtpAuthUrl && (
-              <Box sx={{ textAlign: "center", mb: 2 }}>
-                <QRCode
-                  value={computedOtpAuthUrl}
-                  size={192}
-                  includeMargin={true}
-                />
-              </Box>
-            )}
-            {!qrCode && secret && !computedOtpAuthUrl && (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                QR code not available. You can manually enter this secret in
-                your authenticator app: <b>{secret}</b>
-              </Alert>
-            )}
-            {secret && (
-              <Box
-                sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}
-              >
-                <TextField
-                  fullWidth
-                  label="Secret (manual entry)"
-                  value={secret}
-                  InputProps={{ readOnly: true }}
-                />
-                <Button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(secret);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  }}
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8">
+        <GlassCard className="p-6">
+          <SectionHeader
+            title="Account security status"
+            subtitle="Control whether sign-ins require a rotating authenticator code."
+          />
+          <div className="mt-6 grid gap-6 md:grid-cols-2">
+            <div className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                Current posture
+              </p>
+              <p className="text-2xl font-semibold text-white">
+                {is2FAEnabled ? "2FA is enforced" : "2FA is disabled"}
+              </p>
+              <p className="text-sm text-white/60">
+                {is2FAEnabled
+                  ? "You'll need to supply a valid code from your authenticator when signing in."
+                  : "Enable two-factor authentication to enforce rotating passcodes for this account."}
+              </p>
+              {is2FAEnabled ? (
+                <button
+                  type="button"
+                  onClick={handleDisable}
+                  className={`${glassButtonClass} border-rose-400/40 bg-rose-500/10 hover:border-rose-300/60 hover:bg-rose-500/20 ${
+                    loadingAction ? "cursor-wait opacity-70" : ""
+                  }`}
+                  disabled={loadingAction}
                 >
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              </Box>
-            )}
-            <Typography variant="body2" sx={{ mb: 1 }}>
-              Then enter the 6-digit code to verify:
-            </Typography>
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <TextField
-                fullWidth
-                label="Verification Code"
-                value={verificationToken}
-                onChange={(e) =>
-                  setVerificationToken(
-                    e.target.value.replace(/\D/g, "").slice(0, 6)
-                  )
-                }
-                inputProps={{
-                  maxLength: 6,
-                  style: { textAlign: "center", fontSize: "1.2em" },
-                }}
+                  {loadingAction ? "Updating…" : "Disable 2FA"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGenerateSetupKit}
+                  className={`${glassButtonClass} border-emerald-400/40 bg-emerald-500/10 hover:border-emerald-300/60 hover:bg-emerald-500/20 ${
+                    loadingAction ? "cursor-wait opacity-70" : ""
+                  }`}
+                  disabled={loadingAction}
+                >
+                  {loadingAction ? "Generating…" : "Start setup"}
+                </button>
+              )}
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                Guidance
+              </p>
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-white/70">
+                <li>Install Authy, 1Password, or Google Authenticator.</li>
+                <li>Scan the QR code or enter the secret key manually.</li>
+                <li>Enter the 6-digit code to complete activation.</li>
+                <li>Store backup codes in a vault for emergency access.</li>
+              </ul>
+            </div>
+          </div>
+        </GlassCard>
+
+        {!is2FAEnabled ? (
+          <GradientBorderCard>
+            <div className="space-y-6">
+              <SectionHeader
+                title="Enable two-factor authentication"
+                subtitle="Generate a shared secret and validate it with your authenticator application."
               />
-              <Button
-                onClick={handleVerify2FA}
-                disabled={verificationToken.length !== 6 || loading}
-                variant="contained"
+              {setupSecret || setupQr || setupUrl ? (
+                <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+                  <div className="space-y-4">
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-center">
+                      <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                        Scan code
+                      </p>
+                      <div className="mt-4 flex items-center justify-center">
+                        {setupQr ? (
+                          <img
+                            src={setupQr}
+                            alt="2FA QR"
+                            className="h-48 w-48 rounded-2xl border border-white/10 bg-white/5 p-2"
+                          />
+                        ) : setupUrl ? (
+                          <QRCode
+                            value={setupUrl}
+                            size={200}
+                            includeMargin
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                        Manual entry
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={setupSecret}
+                          readOnly
+                          className="flex-1 rounded-full border border-white/12 bg-white/10 px-4 py-2 text-sm text-white/80"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopySecret}
+                          className={`${glassButtonClass} ${
+                            copied ? "border-emerald-400/60 text-emerald-200" : ""
+                          }`}
+                        >
+                          {copied ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                      Verification
+                    </p>
+                    <p className="mt-3 text-sm text-white/60">
+                      Enter the 6-digit passcode shown in your authenticator to confirm activation. Codes rotate every 30 seconds.
+                    </p>
+                    <div className="mt-4 flex flex-col gap-4">
+                      <input
+                        type="text"
+                        value={verificationCode}
+                        onChange={(event) =>
+                          setVerificationCode(
+                            event.target.value.replace(/\D/g, "").slice(0, 6)
+                          )
+                        }
+                        placeholder="123456"
+                        className="rounded-3xl border border-white/12 bg-white/10 px-4 py-3 text-center text-2xl tracking-[0.6em] text-white/80 focus:border-white/40 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerify}
+                        className={`${glassButtonClass} border-emerald-400/40 bg-emerald-500/10 hover:border-emerald-300/60 hover:bg-emerald-500/20 ${
+                          loadingAction ? "cursor-wait opacity-70" : ""
+                        }`}
+                        disabled={loadingAction}
+                      >
+                        {loadingAction ? "Verifying…" : "Verify and enable"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-white/15 bg-white/5 p-6 text-sm text-white/60">
+                  Generate a setup kit to surface the QR code and shared secret for your authenticator app.
+                </div>
+              )}
+            </div>
+          </GradientBorderCard>
+        ) : (
+          <GradientBorderCard>
+            <div className="space-y-6">
+              <SectionHeader
+                title="Disable two-factor authentication"
+                subtitle="Enter your password and a current authenticator code to relax enforcement."
+              />
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                    Current password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className="mt-3 w-full rounded-3xl border border-white/12 bg-white/10 px-4 py-3 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                  />
+                </div>
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                  <label className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                    Authenticator code
+                  </label>
+                  <input
+                    type="text"
+                    value={disableCode}
+                    onChange={(event) =>
+                      setDisableCode(
+                        event.target.value.replace(/\D/g, "").slice(0, 6)
+                      )
+                    }
+                    placeholder="123456"
+                    className="mt-3 w-full rounded-3xl border border-white/12 bg-white/10 px-4 py-3 text-center text-2xl tracking-[0.6em] text-white/80 focus:border-white/40 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <Divider />
+              <button
+                type="button"
+                onClick={handleDisable}
+                className={`${glassButtonClass} border-rose-400/40 bg-rose-500/10 hover:border-rose-300/60 hover:bg-rose-500/20 ${
+                  loadingAction ? "cursor-wait opacity-70" : ""
+                }`}
+                disabled={loadingAction}
               >
-                {loading ? <CircularProgress size={20} /> : "Verify"}
-              </Button>
-            </Box>
-          </Box>
+                {loadingAction ? "Disabling…" : "Disable two-factor"}
+              </button>
+            </div>
+          </GradientBorderCard>
         )}
-
-        <Button
-          variant="outlined"
-          onClick={handleBack}
-          sx={{
-            color: "#3b82f6",
-            borderColor: "#3b82f6",
-            "&:hover": {
-              borderColor: "#2563eb",
-              backgroundColor: "rgba(59, 130, 246, 0.1)",
-            },
-          }}
-        >
-          Back
-        </Button>
-
-        {/* Setup Dialog */}
-        <Dialog
-          open={showSetupDialog}
-          onClose={() => setShowSetupDialog(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>
-            <Box sx={{ display: "flex", alignItems: "center" }}>
-              <QrCodeIcon sx={{ mr: 1 }} />
-              Setup Two-Factor Authentication
-            </Box>
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              1. Install an authenticator app like Google Authenticator or Authy
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              2. Scan this QR code with your authenticator app:
-            </Typography>
-
-            {qrCode && (
-              <Box sx={{ textAlign: "center", mb: 2 }}>
-                <img
-                  src={qrCode}
-                  alt="2FA QR Code"
-                  style={{ maxWidth: "100%" }}
-                />
-              </Box>
-            )}
-            {!qrCode && computedOtpAuthUrl && (
-              <Box sx={{ textAlign: "center", mb: 2 }}>
-                <QRCode
-                  value={computedOtpAuthUrl}
-                  size={224}
-                  includeMargin={true}
-                />
-              </Box>
-            )}
-
-            {secret && (
-              <Box
-                sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}
-              >
-                <TextField
-                  fullWidth
-                  label="Secret (manual entry)"
-                  value={secret}
-                  InputProps={{ readOnly: true }}
-                />
-                <Button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(secret);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  }}
-                >
-                  {copied ? "Copied" : "Copy"}
-                </Button>
-              </Box>
-            )}
-
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              3. Enter the 6-digit code from your app to verify:
-            </Typography>
-
-            <TextField
-              fullWidth
-              label="Verification Code"
-              value={verificationToken}
-              onChange={(e) =>
-                setVerificationToken(
-                  e.target.value.replace(/\D/g, "").slice(0, 6)
-                )
-              }
-              inputProps={{
-                maxLength: 6,
-                style: { textAlign: "center", fontSize: "1.2em" },
-              }}
-              sx={{ mb: 2 }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowSetupDialog(false)}>Cancel</Button>
-            <Button
-              onClick={handleVerify2FA}
-              disabled={verificationToken.length !== 6 || loading}
-              variant="contained"
-            >
-              {loading ? <CircularProgress size={20} /> : "Verify & Enable"}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Disable Dialog */}
-        <Dialog
-          open={showDisableDialog}
-          onClose={() => setShowDisableDialog(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>Disable Two-Factor Authentication</DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              To disable 2FA, please enter your current password and a
-              verification code from your authenticator app:
-            </Typography>
-
-            <TextField
-              fullWidth
-              type="password"
-              label="Current Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              sx={{ mb: 2 }}
-            />
-
-            <TextField
-              fullWidth
-              label="2FA Code"
-              value={verificationToken}
-              onChange={(e) =>
-                setVerificationToken(
-                  e.target.value.replace(/\D/g, "").slice(0, 6)
-                )
-              }
-              inputProps={{
-                maxLength: 6,
-                style: { textAlign: "center", fontSize: "1.2em" },
-              }}
-            />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowDisableDialog(false)}>Cancel</Button>
-            <Button
-              onClick={handleDisable2FA}
-              disabled={!password || verificationToken.length !== 6 || loading}
-              variant="contained"
-              color="error"
-            >
-              {loading ? <CircularProgress size={20} /> : "Disable 2FA"}
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </Paper>
-    </Box>
+      </div>
+    </AdminShell>
   );
 };
 

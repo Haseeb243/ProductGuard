@@ -1,14 +1,16 @@
 import { Link, useLocation } from "react-router-dom";
+import { badgePillClass } from "./ui";
 
-const iconClasses = "w-5 h-5 mr-2";
+const baseIconClass = "h-5 w-5 flex-none";
 
-export const DashboardIcon = () => (
+export const DashboardIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -18,13 +20,14 @@ export const DashboardIcon = () => (
   </svg>
 );
 
-export const FactoryIcon = () => (
+export const FactoryIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -34,13 +37,14 @@ export const FactoryIcon = () => (
   </svg>
 );
 
-export const TruckIcon = () => (
+export const TruckIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -50,13 +54,14 @@ export const TruckIcon = () => (
   </svg>
 );
 
-export const StoreIcon = () => (
+export const StoreIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -66,13 +71,14 @@ export const StoreIcon = () => (
   </svg>
 );
 
-export const AuditIcon = () => (
+export const AuditIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -82,13 +88,14 @@ export const AuditIcon = () => (
   </svg>
 );
 
-export const TransparencyIcon = () => (
+export const TransparencyIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -103,13 +110,14 @@ export const TransparencyIcon = () => (
   </svg>
 );
 
-export const PulseIcon = () => (
+export const PulseIcon = ({ className = baseIconClass }) => (
   <svg
-    className={iconClasses}
+    className={className}
     fill="none"
     stroke="currentColor"
     strokeWidth={2}
     viewBox="0 0 24 24"
+    aria-hidden="true"
   >
     <path
       strokeLinecap="round"
@@ -119,47 +127,206 @@ export const PulseIcon = () => (
   </svg>
 );
 
+export const SupportIcon = ({ className = baseIconClass }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M18 13v5a2 2 0 01-2 2H8l-4 4v-6a2 2 0 01-2-2V7a2 2 0 012-2h7"
+    />
+    <circle cx="19" cy="5" r="3" />
+  </svg>
+);
+
+export const ShieldIcon = ({ className = baseIconClass }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 3l7 4v5c0 5-3.582 9.243-7 10-3.418-.757-7-5-7-10V7l7-4z"
+    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10 12l2 2 4-4" />
+  </svg>
+);
+
+export const UsersIcon = ({ className = baseIconClass }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"
+    />
+    <circle cx="9" cy="7" r="4" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M23 20v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+    />
+  </svg>
+);
+
+const toneIconClasses = {
+  sky: "text-sky-300",
+  purple: "text-purple-300",
+  indigo: "text-indigo-300",
+  cyan: "text-cyan-300",
+  emerald: "text-emerald-300",
+  rose: "text-rose-300",
+  amber: "text-amber-300",
+  slate: "text-slate-200",
+};
+
+const badgeToneClasses = {
+  sky: "border-sky-300/40 bg-sky-300/20 text-sky-50",
+  purple: "border-purple-400/40 bg-purple-400/20 text-purple-50",
+  indigo: "border-indigo-400/40 bg-indigo-400/20 text-indigo-50",
+  cyan: "border-cyan-400/40 bg-cyan-400/15 text-cyan-50",
+  emerald: "border-emerald-400/40 bg-emerald-400/20 text-emerald-50",
+  rose: "border-rose-400/40 bg-rose-400/20 text-rose-50",
+  amber: "border-amber-400/40 bg-amber-400/20 text-amber-50",
+  slate: "border-white/20 bg-white/10 text-white/80",
+};
+
+const getBadgeToneClasses = (tone) =>
+  badgeToneClasses[tone] || badgeToneClasses.slate;
+
 export const SIDEBAR_LINKS = [
-  { icon: <DashboardIcon />, label: "Dashboard", to: "/admin" },
-  { icon: <PulseIcon />, label: "Analytics", to: "/analytics" },
-  { icon: <TransparencyIcon />, label: "Transparency", to: "/transparency" },
-  { icon: <AuditIcon />, label: "Audit Logs", to: "/audit-logs" },
   {
-    icon: <FactoryIcon />,
+    icon: DashboardIcon,
+    label: "Dashboard",
+    to: "/admin",
+    tone: "sky",
+  },
+  {
+    icon: PulseIcon,
+    label: "Analytics",
+    to: "/analytics",
+    tone: "purple",
+    badge: { label: "Pro", tone: "purple" },
+  },
+  {
+    icon: UsersIcon,
+    label: "Manage Accounts",
+    to: "/manage-account",
+    tone: "slate",
+  },
+  {
+    icon: TransparencyIcon,
+    label: "Transparency",
+    to: "/transparency",
+    tone: "cyan",
+  },
+  {
+    icon: AuditIcon,
+    label: "Audit Logs",
+    to: "/audit-logs",
+    tone: "amber",
+  },
+  {
+    icon: FactoryIcon,
     label: "Manufacturers",
     to: "/manage-account?role=manufacturer",
+    tone: "emerald",
   },
   {
-    icon: <TruckIcon />,
+    icon: TruckIcon,
     label: "Suppliers",
     to: "/manage-account?role=supplier",
+    tone: "rose",
   },
   {
-    icon: <StoreIcon />,
+    icon: StoreIcon,
     label: "Retailers",
     to: "/manage-account?role=retailer",
+    tone: "indigo",
   },
-  { icon: <DashboardIcon />, label: "Support", to: "/support-dashboard" },
-  { icon: <DashboardIcon />, label: "2FA Settings", to: "/2fa-settings" },
+  {
+    icon: SupportIcon,
+    label: "Support",
+    to: "/support-dashboard",
+    tone: "cyan",
+    badge: { label: "Live", tone: "sky" },
+  },
+  {
+    icon: ShieldIcon,
+    label: "2FA Settings",
+    to: "/2fa-settings",
+    tone: "emerald",
+  },
 ];
 
-export const SidebarLink = ({ icon, label, to, onNavigate }) => {
+export const SidebarLink = ({
+  icon: Icon,
+  label,
+  to,
+  onNavigate,
+  tone = "sky",
+  badge,
+}) => {
   const location = useLocation();
   const currentPath = `${location.pathname}${location.search}`;
-  const active = to.includes("?")
+  const isActive = to.includes("?")
     ? currentPath === to
     : location.pathname === to;
+  const iconTone = toneIconClasses[tone] || toneIconClasses.slate;
+  const badgeConfig = typeof badge === "string" ? { label: badge } : badge;
+  const badgeTone = badgeConfig?.tone || tone;
+  const iconClassName = `${baseIconClass} ${
+    isActive ? "text-white" : iconTone
+  }`;
 
   return (
     <Link
       to={to}
       onClick={onNavigate}
-      className={`flex items-center px-4 py-2 rounded-lg text-gray-200 hover:bg-gray-800 hover:text-white transition ${
-        active ? "bg-gray-800 text-white" : ""
-      }`}
+      aria-current={isActive ? "page" : undefined}
+      className="group relative block"
     >
-      {icon}
-      <span className="ml-2">{label}</span>
+      <div
+        className={`relative flex items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 text-sm font-semibold transition duration-200 ${
+          isActive
+            ? "border-white/25 bg-white/10 text-white shadow-[0_28px_60px_-40px_rgba(96,165,250,0.75)]"
+            : "border-transparent text-white/70 hover:border-white/15 hover:bg-white/5 hover:text-white"
+        }`}
+      >
+        <span
+          className={`absolute inset-y-2 left-1 w-1 rounded-full bg-gradient-to-b from-white/20 via-white/80 to-white/20 transition ${
+            isActive ? "opacity-100" : "opacity-0 group-hover:opacity-60"
+          }`}
+        />
+        <Icon className={iconClassName} />
+        <span className="flex-1 leading-tight">{label}</span>
+        {badgeConfig ? (
+          <span
+            className={`${badgePillClass} ml-auto text-[0.65rem] ${getBadgeToneClasses(
+              badgeTone
+            )}`}
+          >
+            {badgeConfig.label}
+          </span>
+        ) : null}
+      </div>
     </Link>
   );
 };

@@ -1,0 +1,72 @@
+const baseGlassStyles =
+  "rounded-3xl border border-white/10 backdrop-blur-2xl shadow-[0_40px_90px_-60px_rgba(8,15,35,0.9)]";
+
+export const glassCardClass = `${baseGlassStyles} bg-slate-900/65`; // standard card container
+export const glassPanelClass = `${baseGlassStyles} bg-slate-900/55`; // lighter padding wrapper
+export const gradientBorderClass =
+  "relative rounded-3xl bg-gradient-to-br from-sky-500/40 via-indigo-500/20 to-purple-500/30 p-[1px]";
+
+export const glassButtonClass =
+  "inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10";
+
+export const badgePillClass =
+  "inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white/80";
+
+export const sectionTitleClass =
+  "text-lg font-semibold tracking-tight text-white flex items-center gap-2";
+
+export const sectionSubtitleClass = "text-sm text-white/60";
+
+export const metricValueClass = "text-3xl font-bold tracking-tight text-white";
+export const metricDeltaPositiveClass =
+  "inline-flex items-center gap-1 text-emerald-400 text-sm font-medium";
+export const metricDeltaNegativeClass =
+  "inline-flex items-center gap-1 text-rose-400 text-sm font-medium";
+
+export const GlassCard = ({
+  className = "",
+  children,
+  padding = "p-6",
+  tone = "standard",
+}) => {
+  const surfaceClass = tone === "highlight" ? glassPanelClass : glassCardClass;
+  return (
+    <div className={`${surfaceClass} ${padding} ${className}`}>{children}</div>
+  );
+};
+
+export const GradientBorderCard = ({
+  className = "",
+  children,
+  padding = "p-6",
+}) => (
+  <div className={`${gradientBorderClass} ${className}`}>
+    <div className={`${glassPanelClass} ${padding}`}>{children}</div>
+  </div>
+);
+
+export const MetaPill = ({ icon = null, label, value }) => (
+  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[11px] uppercase tracking-[0.4em] text-white/70">
+    {icon}
+    <span className="font-semibold text-white/60">{label}</span>
+    <span className="text-white whitespace-nowrap">{value}</span>
+  </div>
+);
+
+export const Divider = ({ className = "" }) => (
+  <div className={`h-px w-full bg-white/5 ${className}`} />
+);
+
+export const SectionHeader = ({ title, subtitle = null, actions = null }) => (
+  <div className="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h2 className="text-xl font-semibold text-white tracking-tight">
+        {title}
+      </h2>
+      {subtitle ? (
+        <p className="mt-1 text-sm text-white/60">{subtitle}</p>
+      ) : null}
+    </div>
+    {actions}
+  </div>
+);

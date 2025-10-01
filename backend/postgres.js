@@ -1682,7 +1682,8 @@ function resolveGeo(ip) {
       ? regionDisplayNames?.of?.(countryCode) || countryCode
       : null;
     const cityCandidate = geo.city || geo.region || null;
-    const normalizedCity = cityCandidate && cityCandidate !== "" ? cityCandidate : null;
+    const normalizedCity =
+      cityCandidate && cityCandidate !== "" ? cityCandidate : null;
 
     return {
       country: normalizedCountry,
@@ -2057,13 +2058,91 @@ app.get("/activity-logs", async (req, res) => {
 // --- Download Logs as CSV ---
 app.get("/download-logs/:type", async (req, res) => {
   const { type } = req.params;
-  let data, fields;
+  const {
+    username,
+    days,
+    success,
+    action,
+    serialNumber,
+    isAuthentic,
+    isSuspicious,
+  } = req.query;
+  const limitValue = parseInt(req.query.limit, 10);
+  const hasLimit = Number.isFinite(limitValue) && limitValue > 0;
+
+  let query = "";
+  const params = [];
+  let paramIndex = 1;
+  let fields;
+
   try {
     if (type === "login") {
-      data = (await client.query("SELECT * FROM login_attempts")).rows;
+      query =
+        "SELECT id, username, attempt_time, success, ip_address FROM login_attempts WHERE 1=1";
+
+      if (username) {
+        query += ` AND username = $${paramIndex}`;
+        params.push(username);
+        paramIndex++;
+      }
+
+      if (success !== undefined && success !== "") {
+        query += ` AND success = $${paramIndex}`;
+        params.push(success === "true");
+        paramIndex++;
+      }
+
+      const daysInt = parseInt(days, 10);
+      if (Number.isFinite(daysInt) && daysInt > 0) {
+        query += ` AND attempt_time >= NOW() - INTERVAL '${daysInt} days'`;
+      }
+
+      query += " ORDER BY attempt_time DESC";
+      if (hasLimit) {
+        query += ` LIMIT $${paramIndex}`;
+        params.push(limitValue);
+        paramIndex++;
+      }
       fields = ["id", "username", "attempt_time", "success", "ip_address"];
     } else if (type === "scan") {
-      data = (await client.query("SELECT * FROM product_scans")).rows;
+      query =
+        "SELECT id, serial_number, username, scan_time, location, is_authentic, is_suspicious FROM product_scans WHERE 1=1";
+
+      if (username) {
+        query += ` AND username = $${paramIndex}`;
+        params.push(username);
+        paramIndex++;
+      }
+
+      if (serialNumber) {
+        query += ` AND serial_number = $${paramIndex}`;
+        params.push(serialNumber);
+        paramIndex++;
+      }
+
+      if (isAuthentic !== undefined && isAuthentic !== "") {
+        query += ` AND is_authentic = $${paramIndex}`;
+        params.push(isAuthentic === "true");
+        paramIndex++;
+      }
+
+      if (isSuspicious !== undefined && isSuspicious !== "") {
+        query += ` AND is_suspicious = $${paramIndex}`;
+        params.push(isSuspicious === "true");
+        paramIndex++;
+      }
+
+      const daysInt = parseInt(days, 10);
+      if (Number.isFinite(daysInt) && daysInt > 0) {
+        query += ` AND scan_time >= NOW() - INTERVAL '${daysInt} days'`;
+      }
+
+      query += " ORDER BY scan_time DESC";
+      if (hasLimit) {
+        query += ` LIMIT $${paramIndex}`;
+        params.push(limitValue);
+        paramIndex++;
+      }
       fields = [
         "id",
         "serial_number",
@@ -2071,19 +2150,48 @@ app.get("/download-logs/:type", async (req, res) => {
         "scan_time",
         "location",
         "is_authentic",
+        "is_suspicious",
       ];
     } else if (type === "activity") {
-      data = (await client.query("SELECT * FROM activity_log")).rows;
+      query =
+        "SELECT id, username, action, target, details, log_time FROM activity_log WHERE 1=1";
+
+      if (username) {
+        query += ` AND username = $${paramIndex}`;
+        params.push(username);
+        paramIndex++;
+      }
+
+      if (action) {
+        query += ` AND action = $${paramIndex}`;
+        params.push(action);
+        paramIndex++;
+      }
+
+      const daysInt = parseInt(days, 10);
+      if (Number.isFinite(daysInt) && daysInt > 0) {
+        query += ` AND log_time >= NOW() - INTERVAL '${daysInt} days'`;
+      }
+
+      query += " ORDER BY log_time DESC";
+      if (hasLimit) {
+        query += ` LIMIT $${paramIndex}`;
+        params.push(limitValue);
+        paramIndex++;
+      }
       fields = ["id", "username", "action", "target", "details", "log_time"];
     } else {
       return res.status(400).send("Invalid log type");
     }
+
+    const result = await client.query(query, params);
     const parser = new Parser({ fields });
-    const csv = parser.parse(data);
+    const csv = parser.parse(result.rows);
     res.header("Content-Type", "text/csv");
     res.attachment(`${type}_logs.csv`);
     return res.send(csv);
   } catch (err) {
+    console.error("Error downloading logs:", err);
     res.status(500).send({ message: err.message });
   }
 });
@@ -2192,20 +2300,66 @@ app.get("/analytics/counterfeit/top", async (req, res) => {
   const days = parseInt(req.query.days) || 30;
   try {
     const q = `
+      WITH scan_metrics AS (
+        SELECT 
+          ps.serial_number,
+          COALESCE(NULLIF(TRIM(p.brand), ''), 'Unbranded Product') AS brand,
+          COUNT(*)::int AS total_scans,
+          COUNT(*) FILTER (WHERE ps.is_authentic = false)::int AS counterfeit_scans
+        FROM product_scans ps
+        LEFT JOIN product p ON p.serialnumber = ps.serial_number
+        WHERE ps.scan_time >= NOW() - INTERVAL '${days} days'
+        GROUP BY ps.serial_number, COALESCE(NULLIF(TRIM(p.brand), ''), 'Unbranded Product')
+      ),
+      brand_totals AS (
+        SELECT
+          brand,
+          SUM(total_scans)::int AS total_scans,
+          SUM(counterfeit_scans)::int AS counterfeit_scans,
+          CASE
+            WHEN SUM(total_scans) = 0 THEN 0
+            ELSE ROUND((SUM(counterfeit_scans)::numeric / SUM(total_scans)::numeric) * 100, 2)
+          END AS counterfeit_rate
+        FROM scan_metrics
+        GROUP BY brand
+      ),
+      ranked_serials AS (
+        SELECT
+          brand,
+          serial_number,
+          total_scans,
+          counterfeit_scans,
+          ROW_NUMBER() OVER (
+            PARTITION BY brand
+            ORDER BY counterfeit_scans DESC, total_scans DESC
+          ) AS serial_rank
+        FROM scan_metrics
+      ),
+      brand_serials AS (
+        SELECT
+          brand,
+          json_agg(
+            json_build_object(
+              'serial_number', serial_number,
+              'counterfeit_scans', counterfeit_scans,
+              'total_scans', total_scans
+            )
+            ORDER BY serial_rank
+          ) AS top_serials
+        FROM ranked_serials
+        WHERE serial_rank <= 5
+        GROUP BY brand
+      )
       SELECT 
-        serial_number,
-        COUNT(*)::int AS total_scans,
-        COUNT(CASE WHEN is_authentic = false THEN 1 END)::int AS counterfeit_scans,
-        ROUND(
-          CASE WHEN COUNT(*) = 0 THEN 0
-               ELSE (COUNT(CASE WHEN is_authentic = false THEN 1 END)::numeric / COUNT(*)::numeric) * 100
-          END, 2
-        ) AS counterfeit_rate
-      FROM product_scans
-      WHERE scan_time >= NOW() - INTERVAL '${days} days'
-      GROUP BY serial_number
-      HAVING COUNT(*) >= 1
-      ORDER BY counterfeit_rate DESC, total_scans DESC
+        bt.brand,
+        bt.total_scans,
+        bt.counterfeit_scans,
+        bt.counterfeit_rate,
+        COALESCE(bs.top_serials, '[]'::json) AS top_serials
+      FROM brand_totals bt
+      LEFT JOIN brand_serials bs ON bs.brand = bt.brand
+      WHERE bt.total_scans > 0
+      ORDER BY bt.counterfeit_rate DESC, bt.total_scans DESC
       LIMIT ${limit}
     `;
     const r = await client.query(q);

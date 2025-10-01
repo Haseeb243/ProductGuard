@@ -1,8 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import LogoutIcon from "@mui/icons-material/Logout";
 import bgImg from "../../img/bg.png";
 import logoImg from "../../img/logo.png";
+import useAuth from "../../hooks/useAuth";
 
 const getEthereumObject = () => window.ethereum;
 
@@ -34,6 +35,8 @@ const findMetaMaskAccount = async () => {
 
 const Manufacturer = () => {
   const [currentAccount, setCurrentAccount] = useState("");
+  const navigate = useNavigate();
+  const { logout } = useAuth();
 
   useEffect(() => {
     findMetaMaskAccount().then((account) => {
@@ -62,6 +65,11 @@ const Manufacturer = () => {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
+
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center bg-gray-950 bg-center bg-no-repeat relative"
@@ -72,13 +80,14 @@ const Manufacturer = () => {
     >
       <div className="w-full max-w-md mx-auto px-4 py-8 relative">
         <div className="absolute top-4 right-4 z-10">
-          <Link
-            to="/login"
+          <button
+            type="button"
+            onClick={handleLogout}
             className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-gray-300 hover:text-white bg-gray-800/50 hover:bg-gray-700/50 backdrop-blur-sm border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200"
           >
             <LogoutIcon className="mr-2 h-5 w-5" />
             Logout
-          </Link>
+          </button>
         </div>
 
         <div className="relative rounded-2xl p-1 mt-8 bg-gradient-to-tr from-primary-500 via-indigo-500 to-primary-400 animate-gradient-border">
