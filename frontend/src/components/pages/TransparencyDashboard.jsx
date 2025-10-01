@@ -4,11 +4,7 @@ import dayjs from "dayjs";
 import { toast } from "react-hot-toast";
 import { useConfig } from "../../context/ConfigContext";
 import AdminShell from "../admin/AdminShell";
-import {
-  GlassCard,
-  glassButtonClass,
-  SectionHeader,
-} from "../admin/ui";
+import { GlassCard, glassButtonClass, SectionHeader } from "../admin/ui";
 
 const STATUS_STYLES = {
   ok: {
@@ -240,13 +236,22 @@ const TransparencyDashboard = () => {
         accent: "bg-purple-500/25",
       },
     ];
-  }, [lastRefreshed, onChainTimeline.length, openIssues, ownershipTimeline.length, statusTokens.accent]);
+  }, [
+    lastRefreshed,
+    onChainTimeline.length,
+    openIssues,
+    ownershipTimeline.length,
+    statusTokens.accent,
+  ]);
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-3">
-      <button type="button" onClick={handleRefresh} className={glassButtonClass}>
-        ⟳
-        <span>Refresh data</span>
+      <button
+        type="button"
+        onClick={handleRefresh}
+        className={glassButtonClass}
+      >
+        ⟳<span>Refresh data</span>
       </button>
       {result?.serialNumber ? (
         <button
@@ -254,8 +259,7 @@ const TransparencyDashboard = () => {
           onClick={handleDownloadCsv}
           className={glassButtonClass}
         >
-          ⬇
-          <span>Download CSV</span>
+          ⬇<span>Download CSV</span>
         </button>
       ) : null}
       <button
@@ -263,8 +267,7 @@ const TransparencyDashboard = () => {
         onClick={() => navigate(-1)}
         className={`${glassButtonClass} hidden sm:inline-flex`}
       >
-        ←
-        <span>Back</span>
+        ←<span>Back</span>
       </button>
     </div>
   );
@@ -326,9 +329,9 @@ const TransparencyDashboard = () => {
               Search for a serial to begin
             </h2>
             <p className="max-w-xl text-sm text-white/70">
-              Enter any product serial to instantly blend on-chain smart contract
-              events with off-chain ownership records, identify reconciliation
-              gaps, and download the full ledger for auditing.
+              Enter any product serial to instantly blend on-chain smart
+              contract events with off-chain ownership records, identify
+              reconciliation gaps, and download the full ledger for auditing.
             </p>
           </GlassCard>
         ) : null}
@@ -346,7 +349,10 @@ const TransparencyDashboard = () => {
           <>
             <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map((card) => (
-                <GlassCard key={card.key} className="relative overflow-hidden p-6">
+                <GlassCard
+                  key={card.key}
+                  className="relative overflow-hidden p-6"
+                >
                   <span
                     className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-3xl ${card.accent}`}
                   />
@@ -374,11 +380,11 @@ const TransparencyDashboard = () => {
                     {result.product ? (
                       <div className="space-y-1 text-sm text-white/70">
                         <div>
-                          <span className="text-white/50">Product:</span> {" "}
+                          <span className="text-white/50">Product:</span>{" "}
                           {result.product.name || "—"}
                         </div>
                         <div>
-                          <span className="text-white/50">Brand:</span> {" "}
+                          <span className="text-white/50">Brand:</span>{" "}
                           {result.product.brand || "—"}
                         </div>
                         {result.product.description ? (
@@ -430,13 +436,17 @@ const TransparencyDashboard = () => {
                   <div className="flex items-center justify-between">
                     <span>First seen on-chain</span>
                     <span className="font-medium text-white">
-                      {result.firstSeenOnChain ? formatDate(result.firstSeenOnChain) : "—"}
+                      {result.firstSeenOnChain
+                        ? formatDate(result.firstSeenOnChain)
+                        : "—"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Most recent activity</span>
                     <span className="font-medium text-white">
-                      {result.lastActivityAt ? formatDate(result.lastActivityAt) : "—"}
+                      {result.lastActivityAt
+                        ? formatDate(result.lastActivityAt)
+                        : "—"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -468,7 +478,9 @@ const TransparencyDashboard = () => {
                 {onChainTimeline.length === 0 ? (
                   <div className="flex h-48 flex-col items-center justify-center gap-2 text-white/50">
                     <span className="text-3xl">🛰️</span>
-                    <span className="text-sm">No blockchain events recorded yet.</span>
+                    <span className="text-sm">
+                      No blockchain events recorded yet.
+                    </span>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -487,13 +499,19 @@ const TransparencyDashboard = () => {
                         </div>
                         <div className="mt-2 space-y-1 text-xs text-white/60">
                           {item.actor ? <div>Actor: {item.actor}</div> : null}
-                          {item.location ? <div>Location: {item.location}</div> : null}
+                          {item.location ? (
+                            <div>Location: {item.location}</div>
+                          ) : null}
                           <div>Timestamp: {item.timestamp}</div>
                           {typeof item.isSold === "boolean" ? (
-                            <div>Sold flag: {item.isSold ? "true" : "false"}</div>
+                            <div>
+                              Sold flag: {item.isSold ? "true" : "false"}
+                            </div>
                           ) : null}
                           {item.txHash ? (
-                            <div className="break-all text-white/40">{item.txHash}</div>
+                            <div className="break-all text-white/40">
+                              {item.txHash}
+                            </div>
                           ) : null}
                         </div>
                       </div>
@@ -510,7 +528,9 @@ const TransparencyDashboard = () => {
                 {ownershipTimeline.length === 0 ? (
                   <div className="flex h-48 flex-col items-center justify-center gap-2 text-white/50">
                     <span className="text-3xl">🧾</span>
-                    <span className="text-sm">No ownership records available.</span>
+                    <span className="text-sm">
+                      No ownership records available.
+                    </span>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -564,31 +584,42 @@ const TransparencyDashboard = () => {
                           </td>
                           <td className="px-4 py-3 text-white">{row.label}</td>
                           <td className="px-4 py-3">
-                            {row.timestampIso ? formatDate(row.timestampIso) : "—"}
+                            {row.timestampIso
+                              ? formatDate(row.timestampIso)
+                              : "—"}
                           </td>
                           <td className="px-4 py-3">
                             {row.type.startsWith("on-chain") ? (
                               <div className="space-y-1 text-xs text-white/60">
-                                {row.payload?.actor ? <div>Actor: {row.payload.actor}</div> : null}
+                                {row.payload?.actor ? (
+                                  <div>Actor: {row.payload.actor}</div>
+                                ) : null}
                                 {row.payload?.location ? (
                                   <div>Location: {row.payload.location}</div>
                                 ) : null}
                                 {typeof row.payload?.isSold === "boolean" ? (
                                   <div>
-                                    Sold flag: {row.payload.isSold ? "true" : "false"}
+                                    Sold flag:{" "}
+                                    {row.payload.isSold ? "true" : "false"}
                                   </div>
                                 ) : null}
                                 {row.txHash ? (
-                                  <div className="break-all text-white/40">{row.txHash}</div>
+                                  <div className="break-all text-white/40">
+                                    {row.txHash}
+                                  </div>
                                 ) : null}
                               </div>
                             ) : (
                               <div className="space-y-1 text-xs text-white/60">
-                                {row.ownerName ? <div>Owner: {row.ownerName}</div> : null}
+                                {row.ownerName ? (
+                                  <div>Owner: {row.ownerName}</div>
+                                ) : null}
                                 {row.ownerIdentifier ? (
                                   <div>Identifier: {row.ownerIdentifier}</div>
                                 ) : null}
-                                {row.acquiredAt ? <div>Acquired: {row.acquiredAt}</div> : null}
+                                {row.acquiredAt ? (
+                                  <div>Acquired: {row.acquiredAt}</div>
+                                ) : null}
                                 {row.transferredAt ? (
                                   <div>Transferred: {row.transferredAt}</div>
                                 ) : null}

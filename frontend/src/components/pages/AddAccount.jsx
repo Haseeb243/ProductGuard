@@ -178,8 +178,7 @@ const AddAccount = () => {
   const headerActions = (
     <div className="flex flex-wrap items-center gap-3">
       <Link to="/manage-account" className={glassButtonClass}>
-        ←
-        <span>Back to directory</span>
+        ←<span>Back to directory</span>
       </Link>
       <button
         type="button"
@@ -301,7 +300,8 @@ const AddAccount = () => {
                   Identity & metadata
                 </h2>
                 <p className="mt-2 text-sm text-white/60">
-                  Capture the public details used across the transparency and audit dashboards.
+                  Capture the public details used across the transparency and
+                  audit dashboards.
                 </p>
               </header>
               <div className="space-y-4">

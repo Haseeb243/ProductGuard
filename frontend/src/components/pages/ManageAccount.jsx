@@ -8,7 +8,11 @@ import { GlassCard, glassButtonClass } from "../admin/ui";
 
 const ROLE_FILTERS = [
   { value: "all", label: "All accounts" },
-  { value: "manufacturer", label: "Manufacturers", accent: "bg-emerald-500/25" },
+  {
+    value: "manufacturer",
+    label: "Manufacturers",
+    accent: "bg-emerald-500/25",
+  },
   { value: "supplier", label: "Suppliers", accent: "bg-rose-500/25" },
   { value: "retailer", label: "Retailers", accent: "bg-indigo-500/25" },
 ];
@@ -144,7 +148,8 @@ const ManageAccount = () => {
 
   const totalAccounts = accounts.length;
   const activeRole =
-    ROLE_FILTERS.find((filter) => filter.value === roleFilter) || ROLE_FILTERS[0];
+    ROLE_FILTERS.find((filter) => filter.value === roleFilter) ||
+    ROLE_FILTERS[0];
 
   const activeFilters = useMemo(() => {
     const entries = [];
@@ -302,9 +307,10 @@ const ManageAccount = () => {
         <div className="flex flex-wrap items-center gap-2">
           {ROLE_FILTERS.map((filter) => {
             const isActive = filter.value === roleFilter;
-            const count = filter.value === "all"
-              ? totalAccounts
-              : roleCounts[filter.value] || 0;
+            const count =
+              filter.value === "all"
+                ? totalAccounts
+                : roleCounts[filter.value] || 0;
             return (
               <button
                 key={filter.value}
@@ -349,10 +355,7 @@ const ManageAccount = () => {
       {activeFilters.length ? (
         <div className="flex flex-wrap gap-3">
           {activeFilters.map((item) => (
-            <span
-              key={`${item.label}-${item.value}`}
-              className={chipClasses}
-            >
+            <span key={`${item.label}-${item.value}`} className={chipClasses}>
               <span className="text-[0.6rem] uppercase tracking-wide text-white/50">
                 {item.label}
               </span>
@@ -369,7 +372,9 @@ const ManageAccount = () => {
       <button
         type="button"
         onClick={handleRefresh}
-        className={`${glassButtonClass} ${refreshing ? "cursor-wait opacity-70" : ""}`}
+        className={`${glassButtonClass} ${
+          refreshing ? "cursor-wait opacity-70" : ""
+        }`}
         disabled={refreshing}
       >
         {refreshing ? (
@@ -410,7 +415,10 @@ const ManageAccount = () => {
               </p>
             </GlassCard>
             {summaryCards.map((card) => (
-              <GlassCard key={card.key} className="relative overflow-hidden p-6">
+              <GlassCard
+                key={card.key}
+                className="relative overflow-hidden p-6"
+              >
                 <span
                   className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-3xl ${card.accent}`}
                 />
@@ -434,13 +442,16 @@ const ManageAccount = () => {
                   Account registry
                 </h2>
                 <p className="text-sm text-white/60">
-                  {filteredAccounts.length.toLocaleString()} records in the current view
+                  {filteredAccounts.length.toLocaleString()} records in the
+                  current view
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleRefresh}
-                className={`${glassButtonClass} ${refreshing ? "cursor-wait opacity-70" : ""}`}
+                className={`${glassButtonClass} ${
+                  refreshing ? "cursor-wait opacity-70" : ""
+                }`}
                 disabled={refreshing}
               >
                 {refreshing ? (
@@ -458,7 +469,9 @@ const ManageAccount = () => {
             ) : filteredAccounts.length === 0 ? (
               <div className="flex h-56 flex-col items-center justify-center gap-3 text-white/60">
                 <span className="text-3xl">🗂️</span>
-                <p className="text-sm">No accounts match the current filters.</p>
+                <p className="text-sm">
+                  No accounts match the current filters.
+                </p>
                 <button
                   type="button"
                   onClick={clearFilters}
@@ -496,16 +509,25 @@ const ManageAccount = () => {
                           if (column.field === "role") {
                             const roleKey = normalizeRole(value);
                             const badgeClass =
-                              roleBadgeClasses[roleKey] || roleBadgeClasses.default;
+                              roleBadgeClasses[roleKey] ||
+                              roleBadgeClasses.default;
                             return (
-                              <td key={column.field} className="px-6 py-4 text-sm">
-                                <span className={badgeClass}>{formatRole(value)}</span>
+                              <td
+                                key={column.field}
+                                className="px-6 py-4 text-sm"
+                              >
+                                <span className={badgeClass}>
+                                  {formatRole(value)}
+                                </span>
                               </td>
                             );
                           }
                           if (column.field === "website") {
                             return (
-                              <td key={column.field} className="px-6 py-4 text-sm">
+                              <td
+                                key={column.field}
+                                className="px-6 py-4 text-sm"
+                              >
                                 {value ? (
                                   <a
                                     href={sanitizeWebsite(value)}
@@ -522,8 +544,15 @@ const ManageAccount = () => {
                             );
                           }
                           return (
-                            <td key={column.field} className="px-6 py-4 text-sm text-white/80">
-                              {value ? value : <span className="text-white/40">—</span>}
+                            <td
+                              key={column.field}
+                              className="px-6 py-4 text-sm text-white/80"
+                            >
+                              {value ? (
+                                value
+                              ) : (
+                                <span className="text-white/40">—</span>
+                              )}
                             </td>
                           );
                         })}
@@ -542,7 +571,9 @@ const ManageAccount = () => {
                               className={`${glassButtonClass} border-rose-400/30 bg-rose-500/15 px-3 py-1 text-xs text-rose-100 hover:border-rose-300/60 hover:bg-rose-500/25`}
                               disabled={removingId === account.id}
                             >
-                              {removingId === account.id ? "Removing…" : "Remove"}
+                              {removingId === account.id
+                                ? "Removing…"
+                                : "Remove"}
                             </button>
                           </div>
                         </td>
@@ -568,7 +599,13 @@ const ManageAccount = () => {
   );
 };
 
-const EditAccountModal = ({ account, onFieldChange, onClose, onSave, saving }) => (
+const EditAccountModal = ({
+  account,
+  onFieldChange,
+  onClose,
+  onSave,
+  saving,
+}) => (
   <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 backdrop-blur">
     <GlassCard className="w-full max-w-xl space-y-6 p-7">
       <div className="flex items-start justify-between gap-4">
@@ -632,7 +669,9 @@ const EditAccountModal = ({ account, onFieldChange, onClose, onSave, saving }) =
           </span>
           <textarea
             value={account.description}
-            onChange={(event) => onFieldChange("description", event.target.value)}
+            onChange={(event) =>
+              onFieldChange("description", event.target.value)
+            }
             className={`${inputClasses} min-h-[96px] resize-none`}
             placeholder="Brief summary of the partner and their scope"
           />
@@ -663,11 +702,7 @@ const EditAccountModal = ({ account, onFieldChange, onClose, onSave, saving }) =
         </label>
       </div>
       <div className="flex flex-wrap items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className={glassButtonClass}
-        >
+        <button type="button" onClick={onClose} className={glassButtonClass}>
           Cancel
         </button>
         <button

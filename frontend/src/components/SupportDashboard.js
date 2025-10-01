@@ -79,7 +79,12 @@ const SupportDashboard = () => {
         key: "refreshed",
       },
     ],
-    [activeConversation, conversations.length, lastRefreshed, notifications.length]
+    [
+      activeConversation,
+      conversations.length,
+      lastRefreshed,
+      notifications.length,
+    ]
   );
 
   const fetchNotifications = useCallback(async () => {
@@ -122,9 +127,7 @@ const SupportDashboard = () => {
     setLoadingHistory(true);
     try {
       const params = activeConversation
-        ? `?limit=100&conversationKey=${encodeURIComponent(
-            activeConversation
-          )}`
+        ? `?limit=100&conversationKey=${encodeURIComponent(activeConversation)}`
         : "?limit=100";
       const response = await fetch(
         `${apiBaseUrl}/support/chat-history${params}`
@@ -264,7 +267,8 @@ const SupportDashboard = () => {
                   Test email
                 </p>
                 <p className="text-sm text-white/60">
-                  Verify SMTP configuration by dispatching a sample message to any recipient.
+                  Verify SMTP configuration by dispatching a sample message to
+                  any recipient.
                 </p>
                 <input
                   type="email"
@@ -408,7 +412,8 @@ const SupportDashboard = () => {
                                 {userHandle || "Unknown"}
                               </p>
                               <p className="mt-1 text-xs uppercase tracking-[0.3em] text-white/50">
-                                {conversation.message_preview || "New conversation"}
+                                {conversation.message_preview ||
+                                  "New conversation"}
                               </p>
                             </div>
                             <span className="text-xs text-white/40">
@@ -531,7 +536,8 @@ const SupportDashboard = () => {
                   {deriveConversationUser(activeConversation) || "Not selected"}
                 </p>
                 <p className="mt-1 text-sm text-white/60">
-                  Use the directory above to choose a participant and open the embedded chat console.
+                  Use the directory above to choose a participant and open the
+                  embedded chat console.
                 </p>
                 <button
                   type="button"

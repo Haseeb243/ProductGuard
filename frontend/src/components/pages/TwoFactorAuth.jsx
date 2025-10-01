@@ -15,9 +15,9 @@ import {
 
 const deriveOtpAuthUrl = (secret, username) => {
   if (!secret || !username) return null;
-  const accountLabel = `${encodeURIComponent("ProductGuard")}%20(${encodeURIComponent(
-    username
-  )})`;
+  const accountLabel = `${encodeURIComponent(
+    "ProductGuard"
+  )}%20(${encodeURIComponent(username)})`;
   return `otpauth://totp/${accountLabel}?secret=${encodeURIComponent(
     secret
   )}&issuer=${encodeURIComponent("ProductGuard")}`;
@@ -205,7 +205,7 @@ const TwoFactorAuth = () => {
   return (
     <AdminShell
       title="Two-Factor Authentication"
-  subtitle="Secure your ProductGuard account with time-based one-time passcodes."
+      subtitle="Secure your ProductGuard account with time-based one-time passcodes."
       meta={metaPills}
       actions={
         <div className="flex flex-wrap gap-3">
@@ -310,11 +310,7 @@ const TwoFactorAuth = () => {
                             className="h-48 w-48 rounded-2xl border border-white/10 bg-white/5 p-2"
                           />
                         ) : setupUrl ? (
-                          <QRCode
-                            value={setupUrl}
-                            size={200}
-                            includeMargin
-                          />
+                          <QRCode value={setupUrl} size={200} includeMargin />
                         ) : null}
                       </div>
                     </div>
@@ -333,7 +329,9 @@ const TwoFactorAuth = () => {
                           type="button"
                           onClick={handleCopySecret}
                           className={`${glassButtonClass} ${
-                            copied ? "border-emerald-400/60 text-emerald-200" : ""
+                            copied
+                              ? "border-emerald-400/60 text-emerald-200"
+                              : ""
                           }`}
                         >
                           {copied ? "Copied" : "Copy"}
@@ -346,7 +344,8 @@ const TwoFactorAuth = () => {
                       Verification
                     </p>
                     <p className="mt-3 text-sm text-white/60">
-                      Enter the 6-digit passcode shown in your authenticator to confirm activation. Codes rotate every 30 seconds.
+                      Enter the 6-digit passcode shown in your authenticator to
+                      confirm activation. Codes rotate every 30 seconds.
                     </p>
                     <div className="mt-4 flex flex-col gap-4">
                       <input
@@ -375,7 +374,8 @@ const TwoFactorAuth = () => {
                 </div>
               ) : (
                 <div className="rounded-3xl border border-dashed border-white/15 bg-white/5 p-6 text-sm text-white/60">
-                  Generate a setup kit to surface the QR code and shared secret for your authenticator app.
+                  Generate a setup kit to surface the QR code and shared secret
+                  for your authenticator app.
                 </div>
               )}
             </div>
