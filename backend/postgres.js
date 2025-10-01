@@ -22,6 +22,20 @@ const Joi = require("joi");
 const geoip = require("geoip-lite");
 require("dotenv").config();
 
+let regionDisplayNames = null;
+try {
+  if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+    regionDisplayNames = new Intl.DisplayNames(["en"], { type: "region" });
+  }
+} catch (err) {
+  console.warn("Intl.DisplayNames unavailable:", err?.message || err);
+}
+
+const PRIVATE_NETWORK_GEO = {
+  country: "Local/Test Environment",
+  city: "Internal Network",
+};
+
 const app = express();
 app.use(bodyParser.json());
 
@@ -1651,17 +1665,28 @@ function isPrivateIp(ip) {
 }
 
 function resolveGeo(ip) {
-  if (!ip || isPrivateIp(ip)) {
+  if (!ip) {
     return { country: null, city: null };
+  }
+  if (isPrivateIp(ip)) {
+    return { ...PRIVATE_NETWORK_GEO };
   }
   try {
     const geo = geoip.lookup(ip);
     if (!geo) {
       return { country: null, city: null };
     }
+
+    const countryCode = geo.country || null;
+    const normalizedCountry = countryCode
+      ? regionDisplayNames?.of?.(countryCode) || countryCode
+      : null;
+    const cityCandidate = geo.city || geo.region || null;
+    const normalizedCity = cityCandidate && cityCandidate !== "" ? cityCandidate : null;
+
     return {
-      country: geo.country || null,
-      city: geo.city || null,
+      country: normalizedCountry,
+      city: normalizedCity,
     };
   } catch (err) {
     console.warn("Failed to resolve geo for ip", ip, err.message);
