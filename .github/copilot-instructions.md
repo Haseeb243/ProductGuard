@@ -43,3 +43,4 @@
 - Avoid mutating the massive `postgres.js` file without keeping shutdown hooks and `connectionPromise` wiring intact; new services should reuse the existing graceful shutdown pattern.
 
 Let us know if any section is unclear or missing key context for your workflow so we can refine these instructions.
+please read all file not just the first 400 line and if it too large send it in partss

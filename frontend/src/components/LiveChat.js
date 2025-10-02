@@ -1,18 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Box,
   Paper,
   TextField,
   Button,
   Typography,
-  List,
-  ListItem,
-  ListItemText,
-  Chip,
   Avatar,
   Divider,
   IconButton,
-  Badge,
 } from "@mui/material";
 import {
   Send as SendIcon,
@@ -44,6 +39,28 @@ const LiveChat = ({ user, onClose, targetUsername }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const loadChatHistory = useCallback(async () => {
+    try {
+      const conversationKey =
+        role === "admin" && targetUsername
+          ? `conv:user:${targetUsername}`
+          : `conv:user:${username}`;
+      const base = (apiBaseUrl || "").replace(/\/$/, "");
+      const response = await fetch(
+        `${base}/support/chat-history?limit=50&conversationKey=${encodeURIComponent(
+          conversationKey
+        )}`
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setMessages(data.messages);
+      }
+    } catch (error) {
+      console.error("Error loading chat history:", error);
+    }
+  }, [apiBaseUrl, role, targetUsername, username]);
 
   useEffect(() => {
     // Initialize Socket.IO connection with proper cleanup
@@ -142,29 +159,7 @@ const LiveChat = ({ user, onClose, targetUsername }) => {
       setIsConnected(false);
       setOnlineUsers([]);
     };
-  }, [apiBaseUrl, username, role, targetUsername]);
-
-  const loadChatHistory = async () => {
-    try {
-      const conversationKey =
-        role === "admin" && targetUsername
-          ? `conv:user:${targetUsername}`
-          : `conv:user:${username}`;
-      const base = (apiBaseUrl || "").replace(/\/$/, "");
-      const response = await fetch(
-        `${base}/support/chat-history?limit=50&conversationKey=${encodeURIComponent(
-          conversationKey
-        )}`
-      );
-      const data = await response.json();
-
-      if (data.success) {
-        setMessages(data.messages);
-      }
-    } catch (error) {
-      console.error("Error loading chat history:", error);
-    }
-  };
+  }, [apiBaseUrl, username, role, targetUsername, loadChatHistory]);
 
   const sendMessage = () => {
     if (!newMessage.trim()) return;
@@ -213,21 +208,6 @@ const LiveChat = ({ user, onClose, targetUsername }) => {
     }
   };
 
-  const getRoleColor = (role) => {
-    switch (role) {
-      case "admin":
-        return "error";
-      case "manufacturer":
-        return "primary";
-      case "supplier":
-        return "secondary";
-      case "retailer":
-        return "warning";
-      default:
-        return "default";
-    }
-  };
-
   return (
     <Paper
       elevation={0}
@@ -261,31 +241,36 @@ const LiveChat = ({ user, onClose, targetUsername }) => {
               Live Support Chat
             </div>
             <div className="text-xs text-white/70">One-to-one conversation</div>
+            <div className="mt-1 flex items-center gap-2 text-[0.65rem] text-white/60">
+              <span
+                className={`inline-flex h-2 w-2 rounded-full ${
+                  isConnected ? "bg-emerald-400" : "bg-rose-400"
+                }`}
+              />
+              <span>{isConnected ? "Connected" : "Offline"}</span>
+            </div>
           </div>
-          <Badge
-            color={isConnected ? "success" : "error"}
-            variant="dot"
-            className="ml-2"
-          >
-            <Typography variant="caption" className="text-white/80">
-              {isConnected ? "Connected" : "Offline"}
-            </Typography>
-          </Badge>
         </Box>
-        <Button
-          onClick={onClose}
-          size="small"
-          className="rounded-lg !text-white !border-white/30"
-          variant="outlined"
-          sx={{
-            textTransform: "none",
-            borderColor: "rgba(255,255,255,0.3)",
-            color: "#fff",
-            "&:hover": { borderColor: "rgba(255,255,255,0.6)" },
-          }}
-        >
-          Close
-        </Button>
+        {typeof onClose === "function" ? (
+          <Button
+            onClick={onClose}
+            size="small"
+            className="rounded-lg !text-white !border-white/30"
+            variant="outlined"
+            sx={{
+              textTransform: "none",
+              borderColor: "rgba(255,255,255,0.3)",
+              color: "#fff",
+              "&:hover": { borderColor: "rgba(255,255,255,0.6)" },
+            }}
+          >
+            Close
+          </Button>
+        ) : (
+          <Typography variant="caption" className="text-white/60">
+            Chat stays active while you manage products
+          </Typography>
+        )}
       </Box>
 
       {/* Online Users */}

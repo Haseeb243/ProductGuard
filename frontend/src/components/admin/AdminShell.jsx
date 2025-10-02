@@ -25,26 +25,37 @@ const FooterCard = () => (
   </div>
 );
 
-const Sidebar = ({ onNavigate }) => (
+const Sidebar = ({
+  title = "Admin",
+  links = SIDEBAR_LINKS,
+  onNavigate,
+  footer,
+}) => (
   <aside className="hidden xl:flex xl:w-[19rem] xl:flex-col xl:border-r xl:border-white/10 xl:bg-black/30 xl:px-6 xl:py-8 xl:backdrop-blur-3xl">
     <div className="flex items-center justify-between gap-2">
       <img src={logoImg} alt="ProductGuard" className="h-10" />
       <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.35em] text-white/70">
-        Admin
+        {title}
       </span>
     </div>
     <Divider className="my-6" />
     <nav className="flex-1 space-y-1 overflow-y-auto pr-1">
-      {SIDEBAR_LINKS.map((link) => (
+      {links.map((link) => (
         <SidebarLink key={link.label} {...link} onNavigate={onNavigate} />
       ))}
     </nav>
     <Divider className="my-6" />
-    <FooterCard />
+    {footer}
   </aside>
 );
 
-const MobileSidebar = ({ open, onClose }) => {
+const MobileSidebar = ({
+  open,
+  onClose,
+  title = "Admin",
+  links = SIDEBAR_LINKS,
+  footer,
+}) => {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -64,15 +75,15 @@ const MobileSidebar = ({ open, onClose }) => {
         <div className="flex items-center gap-3">
           <img src={logoImg} alt="ProductGuard" className="h-9" />
           <span className="text-sm font-semibold uppercase tracking-[0.45em] text-white/70">
-            Admin
+            {title}
           </span>
         </div>
         <nav className="mt-8 space-y-1 overflow-y-auto pr-3">
-          {SIDEBAR_LINKS.map((link) => (
+          {links.map((link) => (
             <SidebarLink key={link.label} {...link} onNavigate={onClose} />
           ))}
         </nav>
-        <FooterCard />
+        {footer}
       </div>
     </div>
   );
@@ -111,12 +122,25 @@ const AdminShell = ({
   meta = [],
   actions = null,
   toolbar = null,
+  sidebarTitle,
+  sidebarLinks,
+  sidebarFooter,
+  forceSidebar = false,
+  workspaceLabel,
+  showHeaderProfile,
+  showHeaderNotifications,
   children,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { auth } = useAuth();
   const isAdmin = auth?.role === "admin";
+  const links = Array.isArray(sidebarLinks) ? sidebarLinks : SIDEBAR_LINKS;
+  const footerContent =
+    sidebarFooter === undefined ? <FooterCard /> : sidebarFooter;
+  const shouldShowSidebar = isAdmin || forceSidebar;
+  const computedSidebarTitle =
+    sidebarTitle || (isAdmin ? "Admin" : "Workspace");
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -127,15 +151,32 @@ const AdminShell = ({
     [title]
   );
 
+  const headerLabel =
+    workspaceLabel || (isAdmin ? "Control Tower" : "Workspace");
+  const displayProfile =
+    typeof showHeaderProfile === "boolean" ? showHeaderProfile : isAdmin;
+  const displayNotifications =
+    typeof showHeaderNotifications === "boolean"
+      ? showHeaderNotifications
+      : isAdmin;
+
   return (
     <div className="relative flex min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
       <BackgroundOrbs />
-      {isAdmin ? (
+      {shouldShowSidebar ? (
         <>
-          <Sidebar onNavigate={() => setSidebarOpen(false)} />
+          <Sidebar
+            title={computedSidebarTitle}
+            links={links}
+            footer={footerContent}
+            onNavigate={() => setSidebarOpen(false)}
+          />
           <MobileSidebar
             open={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
+            title={computedSidebarTitle}
+            links={links}
+            footer={footerContent}
           />
           <button
             type="button"
@@ -155,7 +196,7 @@ const AdminShell = ({
           <div className="flex flex-wrap items-center justify-between gap-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.45em] text-white/50">
-                {isAdmin ? "Control Tower" : "Workspace"}
+                {headerLabel}
               </p>
               <h1
                 id={titleId}
@@ -171,18 +212,16 @@ const AdminShell = ({
             </div>
             <div className="flex items-center gap-3">
               {actions}
-              {isAdmin ? (
-                <>
-                  <button
-                    type="button"
-                    className={bellIconClass}
-                    aria-label="Notifications"
-                  >
-                    🔔
-                  </button>
-                  <ProfileAvatar />
-                </>
+              {displayNotifications ? (
+                <button
+                  type="button"
+                  className={bellIconClass}
+                  aria-label="Notifications"
+                >
+                  🔔
+                </button>
               ) : null}
+              {displayProfile ? <ProfileAvatar /> : null}
             </div>
           </div>
           <MetaRow meta={meta} />

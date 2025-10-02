@@ -281,14 +281,31 @@ export const SidebarLink = ({
   label,
   to,
   onNavigate,
+  onClick,
   tone = "sky",
   badge,
+  isActive: controlledActive,
 }) => {
   const location = useLocation();
-  const currentPath = `${location.pathname}${location.search}`;
-  const isActive = to.includes("?")
-    ? currentPath === to
-    : location.pathname === to;
+  const currentPath = `${location.pathname}${location.search}${
+    location.hash || ""
+  }`;
+  let isActive = false;
+
+  if (typeof controlledActive === "boolean") {
+    isActive = controlledActive;
+  } else if (to) {
+    if (to.includes("#")) {
+      const [path, hash] = to.split("#");
+      const matchesPath = path ? location.pathname === path : true;
+      const matchesHash = hash ? location.hash.replace("#", "") === hash : true;
+      isActive = matchesPath && matchesHash;
+    } else if (to.includes("?")) {
+      isActive = currentPath === to;
+    } else {
+      isActive = location.pathname === to;
+    }
+  }
   const iconTone = toneIconClasses[tone] || toneIconClasses.slate;
   const badgeConfig = typeof badge === "string" ? { label: badge } : badge;
   const badgeTone = badgeConfig?.tone || tone;
@@ -296,10 +313,24 @@ export const SidebarLink = ({
     isActive ? "text-white" : iconTone
   }`;
 
+  const handleClick = (event) => {
+    if (!to && onClick) {
+      event.preventDefault();
+    }
+    if (onClick) {
+      onClick(event);
+    }
+    if (onNavigate) {
+      onNavigate();
+    }
+  };
+
+  const Component = to ? Link : "button";
+
   return (
-    <Link
-      to={to}
-      onClick={onNavigate}
+    <Component
+      {...(to ? { to } : { type: "button" })}
+      onClick={handleClick}
       aria-current={isActive ? "page" : undefined}
       className="group relative block"
     >
@@ -327,7 +358,7 @@ export const SidebarLink = ({
           </span>
         ) : null}
       </div>
-    </Link>
+    </Component>
   );
 };
 

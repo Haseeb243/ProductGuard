@@ -1,127 +1,175 @@
-import { Box, Paper, Typography, TextField, Button } from "@mui/material";
-import bgImg from "../../img/bg.png";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "react-hot-toast";
 import { ethers } from "ethers";
 import axios from "axios";
-import abi from "../../utils/Identeefi.json";
 import QRCode from "qrcode.react";
 import dayjs from "dayjs";
-import useAuth from "../../hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import utc from "dayjs/plugin/utc";
 import Geocode from "react-geocode";
-import { useConfig } from "../../context/ConfigContext";
-import ConfirmationNumberOutlinedIcon from "@mui/icons-material/ConfirmationNumberOutlined";
-import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
-import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import abi from "../../utils/Identeefi.json";
 import { buildDescriptiveLocation } from "../../utils/location";
+import { useConfig } from "../../context/ConfigContext";
+import AdminShell from "../admin/AdminShell";
+import {
+  GlassCard,
+  GradientBorderCard,
+  glassButtonClass,
+  SectionHeader,
+  Divider,
+} from "../admin/ui";
+import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
+import { truncateAddress } from "../../utils/wallet";
 
-const getEthereumObject = () => window.ethereum;
+dayjs.extend(utc);
 
-/*
- * This function returns the first linked account found.
- * If there is no account linked, it will return null.
- */
-const findMetaMaskAccount = async () => {
-  try {
-    const ethereum = getEthereumObject();
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+  });
+};
 
-    /*
-     * First make sure we have access to the Ethereum object.
-     */
-    if (!ethereum) {
-      console.error("Make sure you have Metamask!");
-      alert("Make sure you have Metamask!");
-      return null;
-    }
-
-    console.log("We have the Ethereum object", ethereum);
-    const accounts = await ethereum.request({ method: "eth_accounts" });
-
-    if (accounts.length !== 0) {
-      const account = accounts[0];
-      console.log("Found an authorized account:", account);
-      return account;
-    } else {
-      console.error("No authorized account found");
-      return null;
-    }
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
+const formatLocation = (location) => {
+  if (!location) return "Unknown";
+  return location.replace(/;/g, ", ").replace(/\s+/g, " ").trim();
 };
 
 const AddProduct = () => {
-  const [currentAccount, setCurrentAccount] = useState("");
+  const { apiBaseUrl, contractAddress, googleMapsApiKey } = useConfig();
+  const { auth, walletAddress, connectWallet, disconnectWallet, sidebarLinks } =
+    useManufacturerWorkspace();
+
+  const CONTRACT_ADDRESS = contractAddress;
+  const contractABI = abi.abi;
+
   const [serialNumber, setSerialNumber] = useState("");
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [description, setDescription] = useState("");
-  const [image, setImage] = useState({
-    file: [],
-    filepreview: null,
-  });
+  const [image, setImage] = useState({ file: null, preview: null });
   const [qrData, setQrData] = useState("");
-  const [manuDate, setManuDate] = useState("");
+  const [manuDate, setManuDate] = useState(dayjs().unix());
   const [manuLatitude, setManuLatitude] = useState("");
-  const [manuLongtitude, setManuLongtitude] = useState("");
+  const [manuLongitude, setManuLongitude] = useState("");
   const [manuName, setManuName] = useState("");
-  const [loading, setLoading] = useState("");
   const [manuLocation, setManuLocation] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [isUnique, setIsUnique] = useState(true);
+  const [reverseGeocoding, setReverseGeocoding] = useState(false);
+  const [googleGeocodeDisabled, setGoogleGeocodeDisabled] = useState(false);
+  const [googleGeocodeAlerted, setGoogleGeocodeAlerted] = useState(false);
 
-  const { apiBaseUrl, contractAddress, googleMapsApiKey } = useConfig();
-  // Contract address from env
-  const CONTRACT_ADDRESS = contractAddress;
-  const contractABI = abi.abi;
-
-  const { auth } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    findMetaMaskAccount().then((account) => {
-      if (account !== null) {
-        setCurrentAccount(account);
+  const getUsername = useCallback(async () => {
+    if (!auth?.user) return;
+    try {
+      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
+      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
+      if (row?.name) {
+        setManuName(row.name);
       }
-    });
-    getUsername();
-    getCurrentTimeLocation();
+    } catch (error) {
+      console.error("Failed to fetch manufacturer profile", error);
+      toast.error("Unable to load manufacturer profile");
+    }
+  }, [apiBaseUrl, auth?.user]);
+
+  const getCurrentTimeLocation = useCallback(async () => {
+    setManuDate(dayjs().unix());
+    try {
+      if (navigator.permissions?.query) {
+        try {
+          const status = await navigator.permissions.query({
+            name: "geolocation",
+          });
+          if (status.state === "denied") {
+            toast.error(
+              "Location access is blocked. Please enable permissions and retry."
+            );
+          }
+        } catch {
+          // ignore permission query failures
+        }
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setManuLatitude(position.coords.latitude);
+          setManuLongitude(position.coords.longitude);
+        },
+        (error) => {
+          console.warn("Geolocation error", error);
+          toast.error(
+            "Unable to access device location. Enable location services and try again."
+          );
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } catch (error) {
+      console.warn("getCurrentTimeLocation failed", error);
+    }
   }, []);
 
   useEffect(() => {
-    const doReverse = async () => {
-      if (
-        manuLatitude === "" ||
-        manuLongtitude === "" ||
-        isNaN(Number(manuLatitude)) ||
-        isNaN(Number(manuLongtitude))
-      ) {
-        return;
-      }
-      // Try Google first if key is available
-      if (googleMapsApiKey) {
-        try {
-          Geocode.setApiKey(googleMapsApiKey);
-          const response = await Geocode.fromLatLng(
-            manuLatitude,
-            manuLongtitude
-          );
-          const address = response.results?.[0]?.formatted_address;
-          if (address) {
-            setManuLocation(address.replace(/,/g, ";"));
-            return;
-          }
-        } catch (e) {
-          console.warn("Google reverse geocoding failed, trying 3rd-party:", e);
-        }
-      }
-      // 3rd party: BigDataCloud (no API key required)
+    getUsername();
+    getCurrentTimeLocation();
+  }, [getUsername, getCurrentTimeLocation]);
+
+  useEffect(() => {
+    if (
+      !manuLatitude ||
+      !manuLongitude ||
+      Number.isNaN(Number(manuLatitude)) ||
+      Number.isNaN(Number(manuLongitude))
+    ) {
+      return;
+    }
+
+    const performReverseGeocode = async () => {
+      setReverseGeocoding(true);
       try {
+        if (googleMapsApiKey && !googleGeocodeDisabled) {
+          try {
+            Geocode.setApiKey(googleMapsApiKey);
+            const response = await Geocode.fromLatLng(
+              manuLatitude,
+              manuLongitude
+            );
+            const address = response.results?.[0]?.formatted_address;
+            if (address) {
+              setManuLocation(address.replace(/,/g, ";"));
+              return;
+            }
+          } catch (error) {
+            console.warn("Google reverse geocoding failed", error);
+            const message = (error?.message || "").toString();
+            if (
+              !googleGeocodeDisabled &&
+              (message.includes("REQUEST_DENIED") ||
+                message.includes("This API project is not authorized") ||
+                message.includes(
+                  "API keys with referer restrictions cannot be used"
+                ))
+            ) {
+              setGoogleGeocodeDisabled(true);
+              if (!googleGeocodeAlerted) {
+                setGoogleGeocodeAlerted(true);
+                toast.error(
+                  "Google Maps reverse geocoding failed. Using backup location service instead."
+                );
+              }
+            }
+          }
+        }
+
         const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(
           manuLatitude
-        )}&longitude=${encodeURIComponent(manuLongtitude)}&localityLanguage=en`;
+        )}&longitude=${encodeURIComponent(manuLongitude)}&localityLanguage=en`;
         const resp = await fetch(url);
         if (resp.ok) {
           const data = await resp.json();
@@ -131,476 +179,707 @@ const AddProduct = () => {
             return;
           }
         }
-      } catch (e) {
-        console.warn("BigDataCloud reverse geocoding failed:", e);
+      } catch (error) {
+        console.warn("Reverse geocoding failed", error);
+      } finally {
+        setReverseGeocoding(false);
       }
-      // Fallback: coordinates string
-      setManuLocation(`lat:${manuLatitude};lon:${manuLongtitude}`);
-    };
-    doReverse();
-  }, [manuLatitude, manuLongtitude, googleMapsApiKey]);
 
-  const generateQRCode = async (serialNumber) => {
-    // const qrCode = await productContract.getProduct(serialNumber);
-    const data = CONTRACT_ADDRESS + "," + serialNumber;
-    setQrData(data);
-    console.log("QR Code: ", qrData);
+      setManuLocation(`lat:${manuLatitude};lon:${manuLongitude}`);
+    };
+
+    performReverseGeocode();
+  }, [
+    manuLatitude,
+    manuLongitude,
+    googleMapsApiKey,
+    googleGeocodeDisabled,
+    googleGeocodeAlerted,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (image.preview) {
+        URL.revokeObjectURL(image.preview);
+      }
+    };
+  }, [image.preview]);
+
+  const handleImage = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (image.preview) {
+      URL.revokeObjectURL(image.preview);
+    }
+    setImage({ file, preview: URL.createObjectURL(file) });
   };
 
+  const clearImage = () => {
+    if (image.preview) {
+      URL.revokeObjectURL(image.preview);
+    }
+    setImage({ file: null, preview: null });
+  };
+
+  const generateQRCode = useCallback(
+    (serial) => {
+      if (!serial) {
+        setQrData("");
+        return;
+      }
+      setQrData(`${CONTRACT_ADDRESS},${serial}`);
+    },
+    [CONTRACT_ADDRESS]
+  );
+
   const downloadQR = () => {
-    const canvas = document.getElementById("QRCode");
+    const canvas = document.getElementById("add-product-qr-canvas");
+    if (!canvas) return;
     const pngUrl = canvas
       .toDataURL("image/png")
       .replace("image/png", "image/octet-stream");
-    let downloadLink = document.createElement("a");
-    downloadLink.href = pngUrl;
-    downloadLink.download = `${serialNumber}.png`;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
+    const link = document.createElement("a");
+    link.href = pngUrl;
+    link.download = `${serialNumber || "product"}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  const handleBack = () => {
-    navigate(-1);
-  };
-
-  const handleImage = async (e) => {
-    setImage({
-      ...image,
-      file: e.target.files[0],
-      filepreview: URL.createObjectURL(e.target.files[0]),
-    });
-  };
-
-  const getUsername = async () => {
-    try {
-      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
-      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
-      if (row?.name) setManuName(row.name);
-    } catch (e) {
-      console.error("Failed to fetch manufacturer profile:", e);
+  const checkUnique = useCallback(async () => {
+    if (!serialNumber.trim()) {
+      setIsUnique(true);
+      return false;
     }
-  };
+    try {
+      const res = await axios.get(`${apiBaseUrl}/product/serialNumber`);
+      const existingSerials = Array.isArray(res.data)
+        ? res.data.map((product) => product.serialnumber)
+        : [];
+      const duplicates = existingSerials.includes(serialNumber);
+      setIsUnique(!duplicates);
+      if (duplicates) {
+        toast.error("Serial number already exists in the system");
+      }
+      return !duplicates;
+    } catch (error) {
+      console.error("Unique check failed", error);
+      toast.error("Unable to validate serial uniqueness");
+      return false;
+    }
+  }, [apiBaseUrl, serialNumber]);
 
-  // to upload image
-  const uploadImage = async (image) => {
+  const uploadImage = useCallback(async () => {
+    if (!image.file) {
+      toast.error("Attach a product image before submitting");
+      return null;
+    }
     const data = new FormData();
     data.append("image", image.file);
-
-    axios
-      .post(`${apiBaseUrl}/upload/product`, data, {
+    try {
+      const res = await axios.post(`${apiBaseUrl}/upload/product`, data, {
         headers: { "Content-Type": "multipart/form-data" },
-      })
-      .then((res) => {
-        console.log(res);
-
-        if (res.data.success === 1) {
-          console.log("image uploaded");
-        }
       });
-  };
-
-  const registerProduct = async (e) => {
-    e.preventDefault();
-
-    try {
-      const { ethereum } = window;
-
-      if (ethereum) {
-        // Ensure wallet is connected
-        await ethereum.request({ method: "eth_requestAccounts" });
-
-        const provider = new ethers.providers.Web3Provider(ethereum);
-        const signer = provider.getSigner();
-        const productContract = new ethers.Contract(
-          CONTRACT_ADDRESS,
-          contractABI,
-          signer
-        );
-
-        console.log("here");
-
-        // write transactions
-        const registerTxn = await productContract.registerProduct(
-          name,
-          brand,
-          serialNumber,
-          description.replace(/,/g, ";"),
-          image.file.name,
-          manuName,
-          manuLocation,
-          manuDate.toString()
-        );
-        console.log("Mining (Registering Product) ...", registerTxn.hash);
-        setLoading("Mining (Register Product) ...", registerTxn.hash);
-
-        await registerTxn.wait();
-        console.log("Mined (Register Product) --", registerTxn.hash);
-        setLoading("Mined (Register Product) --", registerTxn.hash);
-
-        generateQRCode(serialNumber);
-
-        const product = await productContract.getProduct(serialNumber);
-
-        console.log("Retrieved product...", product);
-        setLoading("");
-      } else {
-        console.log("Ethereum object doesn't exist!");
+      if (res?.data?.success) {
+        return res.data;
       }
+      toast.error(res?.data?.message || "Image upload failed. Try again.");
     } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const getCurrentTimeLocation = async () => {
-    setManuDate(dayjs().unix());
-    try {
-      // Prefer Permissions API when available to surface better UX
-      if (navigator.permissions && navigator.permissions.query) {
-        try {
-          const status = await navigator.permissions.query({
-            name: "geolocation",
-          });
-          if (status.state === "denied") {
-            alert(
-              "Location access is blocked. Please enable location permissions for this site and try again."
-            );
-          }
-        } catch {}
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setManuLatitude(position.coords.latitude);
-          setManuLongtitude(position.coords.longitude);
-        },
-        (error) => {
-          console.warn("Geolocation error:", error?.message || error);
-          alert(
-            "Unable to access device location. Please enable location services and permissions, then try again."
-          );
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      console.error("Image upload failed", error);
+      toast.error(
+        error?.response?.data?.message || "Image upload failed. Try again."
       );
-    } catch (e) {
-      console.warn("getCurrentTimeLocation failed:", e);
     }
-  };
+    return null;
+  }, [apiBaseUrl, image.file]);
 
-  const addProductDB = async () => {
+  const registerProductOnChain = useCallback(async () => {
+    const { ethereum } = window;
+    if (!ethereum) {
+      throw new Error("MetaMask is required to register products");
+    }
+    const sanitizedDescription = description.replace(/,/g, ";");
     try {
-      const profileData = JSON.stringify({
-        serialNumber: serialNumber,
-        name: name,
-        brand: brand,
-        username: auth?.username || auth?.user || null,
-        // Ensure backend email QR includes contract address
-        contractAddress: CONTRACT_ADDRESS,
-      });
+      await ethereum.request({ method: "eth_requestAccounts" });
+      const provider = new ethers.providers.Web3Provider(ethereum);
+      const signer = provider.getSigner();
+      const productContract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        contractABI,
+        signer
+      );
+      const registerTxn = await productContract.registerProduct(
+        name,
+        brand,
+        serialNumber,
+        sanitizedDescription,
+        image.file?.name || "",
+        manuName,
+        manuLocation,
+        manuDate.toString()
+      );
+      setLoadingMessage("Waiting for on-chain confirmation…");
+      await registerTxn.wait();
+      return registerTxn.hash;
+    } catch (error) {
+      if (error?.code === 4001) {
+        const rejectionError = new Error(
+          "Transaction was rejected in MetaMask."
+        );
+        rejectionError.__handled = true;
+        throw rejectionError;
+      }
+      throw error;
+    }
+  }, [
+    CONTRACT_ADDRESS,
+    contractABI,
+    name,
+    brand,
+    serialNumber,
+    description,
+    image.file,
+    manuName,
+    manuLocation,
+    manuDate,
+  ]);
 
-      const res = await axios.post(`${apiBaseUrl}/addproduct`, profileData, {
+  const addProductRecord = useCallback(async () => {
+    const payload = {
+      serialNumber,
+      name,
+      brand,
+      username: auth?.username || auth?.user || null,
+      contractAddress: CONTRACT_ADDRESS,
+    };
+    try {
+      await axios.post(`${apiBaseUrl}/addproduct`, JSON.stringify(payload), {
         headers: { "Content-Type": "application/json" },
       });
+    } catch (error) {
+      if (error?.response?.status === 409) {
+        toast.error("This serial number is already registered.");
+      } else {
+        console.error("Failed to persist product record", error);
+        toast.error(
+          error?.response?.data?.message || "Failed to persist product record"
+        );
+      }
+      try {
+        error.__handled = true;
+      } catch (assignError) {
+        // ignore if property assignment fails
+      }
+      throw error;
+    }
+  }, [
+    apiBaseUrl,
+    auth?.username,
+    auth?.user,
+    brand,
+    name,
+    serialNumber,
+    CONTRACT_ADDRESS,
+  ]);
 
-      console.log(JSON.stringify(res.data));
-    } catch (err) {
-      console.log(err);
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (submitting) return;
+    const missingFields = [];
+    if (!serialNumber.trim()) missingFields.push("Serial number");
+    if (!name.trim()) missingFields.push("Product name");
+    if (!brand.trim()) missingFields.push("Brand");
+    if (!description.trim()) missingFields.push("Description");
+    if (!image.file) missingFields.push("Product image");
+    if (!walletAddress) missingFields.push("Connected wallet");
+
+    if (missingFields.length) {
+      toast.error(`Complete required fields: ${missingFields.join(", ")}`);
+      return;
+    }
+
+    setSubmitting(true);
+    setLoadingMessage("Validating serial uniqueness…");
+
+    try {
+      await getCurrentTimeLocation();
+      const unique = await checkUnique();
+      if (!unique) {
+        return;
+      }
+
+      setLoadingMessage("Uploading product assets…");
+      const uploaded = await uploadImage();
+      if (!uploaded) {
+        return;
+      }
+
+      setLoadingMessage("Awaiting wallet signature…");
+      const txHash = await registerProductOnChain();
+      console.log("Register product tx", txHash);
+
+      setLoadingMessage("Persisting off-chain record…");
+      await addProductRecord();
+
+      generateQRCode(serialNumber);
+      setLoadingMessage("");
+      toast.success("Product registered successfully");
+    } catch (error) {
+      console.error("Product registration failed", error);
+      if (error?.__handled) {
+        // message already shown
+      } else if (error?.code === "ACTION_REJECTED") {
+        toast.error("Transaction was rejected in MetaMask.");
+      } else {
+        toast.error(error?.message || "Failed to register product");
+      }
+    } finally {
+      setSubmitting(false);
+      setLoadingMessage("");
     }
   };
 
-  const checkUnique = async () => {
-    const res = await axios.get(`${apiBaseUrl}/product/serialNumber`);
-    const existingSerialNumbers = res.data.map(
-      (product) => product.serialnumber
-    );
-    existingSerialNumbers.push(serialNumber);
-    // checking for duplicated serial number
-    const duplicates = existingSerialNumbers.filter(
-      (item, index) => existingSerialNumbers.indexOf(item) != index
-    );
-    const isDuplicate = duplicates.length >= 1;
-    setIsUnique(!isDuplicate);
-    return !isDuplicate;
-  };
+  const metaSummary = useMemo(
+    () => [
+      {
+        label: "Manufacturer",
+        value: manuName || auth?.user || "Unknown",
+        key: "manufacturer",
+      },
+      {
+        label: "Wallet",
+        value: walletAddress ? truncateAddress(walletAddress) : "Not connected",
+        key: "wallet",
+      },
+      {
+        label: "Contract",
+        value: CONTRACT_ADDRESS ? truncateAddress(CONTRACT_ADDRESS) : "Unset",
+        key: "contract",
+      },
+      {
+        label: "Location",
+        value: formatLocation(manuLocation),
+        key: "location",
+      },
+    ],
+    [CONTRACT_ADDRESS, walletAddress, manuLocation, manuName, auth?.user]
+  );
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    getCurrentTimeLocation();
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const unique = await checkUnique();
-    if (unique) {
-      await uploadImage(image);
-      setLoading(
-        "Please pay the transaction fee to register the product on-chain..."
-      );
-      await registerProduct(e); // waits for transaction to be mined
-      // Only after successful on-chain registration, persist to DB and trigger email with full QR payload
-      await addProductDB();
-    }
-    setIsUnique(true);
-  };
-
-  try {
-    console.log("Rendering AddProduct page");
-    return (
-      <Box
-        sx={{
-          minHeight: "100vh",
-          width: "100vw",
-          backgroundImage: `linear-gradient(rgba(10,10,20,0.85),rgba(10,10,20,0.95)), url(${bgImg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          position: "relative",
-        }}
+  const headerActions = (
+    <div className="flex flex-wrap gap-3">
+      <button
+        type="button"
+        onClick={connectWallet}
+        className={glassButtonClass}
       >
-        <Paper
-          elevation={8}
-          sx={{
-            borderRadius: 6,
-            p: 5,
-            width: 440,
-            maxWidth: "98vw",
-            background: "linear-gradient(135deg, #38bdf8 0%, #6366f1 100%)",
-            boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.25)",
-            color: "#fff",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
+        {walletAddress ? "Switch wallet" : "Connect wallet"}
+      </button>
+      {walletAddress ? (
+        <button
+          type="button"
+          onClick={disconnectWallet}
+          className={`${glassButtonClass} border-rose-300/40 bg-rose-500/10 hover:border-rose-200/60 hover:bg-rose-500/20`}
         >
-          <Typography
-            variant="h3"
-            sx={{
-              textAlign: "center",
-              mb: 3,
-              fontFamily: "Gambetta",
-              fontWeight: 800,
-              color: "#fff",
-              letterSpacing: 1,
-            }}
+          Disconnect
+        </button>
+      ) : null}
+      <button
+        type="button"
+        onClick={getCurrentTimeLocation}
+        className={glassButtonClass}
+      >
+        Refresh location
+      </button>
+      <Link to="/manufacturer" className={glassButtonClass}>
+        Manufacturer dashboard
+      </Link>
+    </div>
+  );
+
+  const quickLinksToolbar = (
+    <GlassCard className="w-full" padding="p-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {
+            title: "Connect MetaMask",
+            complete: Boolean(walletAddress),
+          },
+          {
+            title: "Prepare product metadata",
+            complete: Boolean(serialNumber && name && brand),
+          },
+          {
+            title: "Attach imagery",
+            complete: Boolean(image.file),
+          },
+          {
+            title: "Capture geolocation",
+            complete: Boolean(manuLatitude && manuLongitude),
+          },
+        ].map((step) => (
+          <div
+            key={step.title}
+            className={`rounded-2xl border px-4 py-3 text-sm transition ${
+              step.complete
+                ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-50"
+                : "border-white/10 bg-white/5 text-white/70"
+            }`}
           >
-            Add Product
-          </Typography>
-          <form onSubmit={handleSubmit} style={{ width: "100%" }}>
-            <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <ConfirmationNumberOutlinedIcon sx={{ color: "#fff", mr: 1 }} />
-              <TextField
-                fullWidth
-                error={!isUnique}
-                helperText={!isUnique ? "Serial Number already exists" : ""}
-                id="serial-number"
-                label="Serial Number"
-                variant="outlined"
-                onChange={(e) => setSerialNumber(e.target.value)}
-                value={serialNumber}
-                InputLabelProps={{ style: { color: "#fff" } }}
-                InputProps={{ style: { color: "#fff" } }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    "& fieldset": { borderColor: "#fff" },
-                    "&:hover fieldset": { borderColor: "#90caf9" },
-                    "&.Mui-focused fieldset": { borderColor: "#38bdf8" },
-                  },
-                  mb: 0,
-                }}
+            {step.complete ? "✔" : "○"} {step.title}
+          </div>
+        ))}
+      </div>
+    </GlassCard>
+  );
+
+  return (
+    <AdminShell
+      title="Product Onboarding Studio"
+      subtitle="Mint new items on-chain, anchor provenance, and distribute verifiable product QR codes from a single workspace."
+      meta={metaSummary}
+      actions={headerActions}
+      toolbar={quickLinksToolbar}
+      sidebarTitle="Manufacturer"
+      sidebarLinks={sidebarLinks || undefined}
+      forceSidebar={Boolean(sidebarLinks)}
+      workspaceLabel="Manufacturer Hub"
+      showHeaderNotifications={false}
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="mx-auto flex w-full max-w-[1350px] flex-col gap-10"
+      >
+        <GradientBorderCard className="relative overflow-hidden p-8">
+          <span className="pointer-events-none absolute -left-24 top-0 h-56 w-56 rounded-full bg-sky-500/20 blur-3xl" />
+          <span className="pointer-events-none absolute -right-20 bottom-0 h-56 w-56 rounded-full bg-indigo-500/20 blur-3xl" />
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.45em] text-white/60">
+                Supply chain provenance
+              </p>
+              <h2 className="text-3xl font-semibold text-white">
+                Register serialized inventory with confidence
+              </h2>
+              <p className="max-w-3xl text-sm text-white/70">
+                Gather SKU metadata, capture manufacturing coordinates, and
+                anchor the asset on-chain in a single guided flow. Once
+                registered you can share the generated QR code across packaging,
+                invoices, and partner portals.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-white/60">
+                <span className="rounded-full border border-white/12 bg-white/5 px-3 py-1">
+                  Local timestamp{" "}
+                  {formatDateTime(dayjs.unix(manuDate).toDate())}
+                </span>
+                {loadingMessage ? (
+                  <span className="rounded-full border border-sky-300/40 bg-sky-500/10 px-3 py-1 text-sky-100">
+                    {loadingMessage}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <GlassCard className="w-full max-w-sm space-y-4 border border-white/15 bg-black/40 p-6 text-sm text-white/70">
+              <p className="text-xs uppercase tracking-[0.35em] text-white/50">
+                Progress
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span>Serial captured</span>
+                  <span>{serialNumber ? "✔" : "○"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Wallet connected</span>
+                  <span>{walletAddress ? "✔" : "○"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Image attached</span>
+                  <span>{image.file ? "✔" : "○"}</span>
+                </div>
+              </div>
+            </GlassCard>
+          </div>
+        </GradientBorderCard>
+
+        <section className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+          <div className="space-y-6">
+            <GlassCard className="p-7">
+              <SectionHeader
+                eyebrow="Product metadata"
+                title="Core details"
+                description="Serial ensures uniqueness on-chain while descriptive fields keep downstream partners aligned."
               />
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <DriveFileRenameOutlineIcon sx={{ color: "#fff", mr: 1 }} />
-              <TextField
-                fullWidth
-                id="product-name"
-                label="Name"
-                variant="outlined"
-                onChange={(e) => setName(e.target.value)}
-                value={name}
-                InputLabelProps={{ style: { color: "#fff" } }}
-                InputProps={{ style: { color: "#fff" } }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    "& fieldset": { borderColor: "#fff" },
-                    "&:hover fieldset": { borderColor: "#90caf9" },
-                    "&.Mui-focused fieldset": { borderColor: "#38bdf8" },
-                  },
-                  mb: 0,
-                }}
+              <Divider className="my-6" />
+              <div className="grid gap-5 md:grid-cols-2">
+                <label className="flex flex-col gap-2 text-sm text-white/70">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Serial number
+                  </span>
+                  <input
+                    type="text"
+                    value={serialNumber}
+                    onChange={(event) => {
+                      setSerialNumber(event.target.value);
+                      setIsUnique(true);
+                    }}
+                    className={`rounded-2xl border px-4 py-2.5 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0 ${
+                      isUnique
+                        ? "border-white/12 bg-white/10"
+                        : "border-rose-400/50 bg-rose-500/10"
+                    }`}
+                    placeholder="e.g. PG-2025-0001"
+                  />
+                  {!isUnique ? (
+                    <span className="text-xs text-rose-200">
+                      Serial already exists. Choose another identifier.
+                    </span>
+                  ) : null}
+                </label>
+                <label className="flex flex-col gap-2 text-sm text-white/70">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Product name
+                  </span>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    className="rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0"
+                    placeholder="e.g. Signature Handbag"
+                  />
+                </label>
+                <label className="flex flex-col gap-2 text-sm text-white/70">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Brand
+                  </span>
+                  <input
+                    type="text"
+                    value={brand}
+                    onChange={(event) => setBrand(event.target.value)}
+                    className="rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0"
+                    placeholder="Brand name"
+                  />
+                </label>
+                <label className="flex flex-col gap-2 text-sm text-white/70 md:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Description
+                  </span>
+                  <textarea
+                    rows={4}
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    className="rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0"
+                    placeholder="Material composition, unique identifiers, packaging notes…"
+                  />
+                </label>
+              </div>
+            </GlassCard>
+
+            <GlassCard className="p-7">
+              <SectionHeader
+                eyebrow="Manufacturing context"
+                title="Capture provenance"
+                description="Coordinates and timestamps drive transparency analytics across the network."
               />
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <StorefrontOutlinedIcon sx={{ color: "#fff", mr: 1 }} />
-              <TextField
-                fullWidth
-                id="brand"
-                label="Brand"
-                variant="outlined"
-                onChange={(e) => setBrand(e.target.value)}
-                value={brand}
-                InputLabelProps={{ style: { color: "#fff" } }}
-                InputProps={{ style: { color: "#fff" } }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    "& fieldset": { borderColor: "#fff" },
-                    "&:hover fieldset": { borderColor: "#90caf9" },
-                    "&.Mui-focused fieldset": { borderColor: "#38bdf8" },
-                  },
-                  mb: 0,
-                }}
+              <Divider className="my-6" />
+              <div className="grid gap-5 md:grid-cols-2">
+                <label className="flex flex-col gap-2 text-sm text-white/70">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Timestamp (UTC)
+                  </span>
+                  <input
+                    type="text"
+                    readOnly
+                    value={dayjs
+                      .unix(manuDate)
+                      .utc()
+                      .format("YYYY-MM-DD HH:mm:ss")}
+                    className="rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0"
+                  />
+                </label>
+                <label className="flex flex-col gap-2 text-sm text-white/70">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Location
+                  </span>
+                  <div className="rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80">
+                    <div>{formatLocation(manuLocation)}</div>
+                    {reverseGeocoding ? (
+                      <div className="text-xs text-white/50">
+                        Resolving precise address…
+                      </div>
+                    ) : null}
+                  </div>
+                </label>
+                <label className="flex flex-col gap-2 text-sm text-white/70 md:col-span-2">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Coordinates
+                  </span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      readOnly
+                      value={manuLatitude}
+                      className="rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0"
+                      placeholder="Latitude"
+                    />
+                    <input
+                      type="text"
+                      readOnly
+                      value={manuLongitude}
+                      className="rounded-2xl border border-white/12 bg-white/10 px-4 py-2.5 text-sm text-white/80 transition focus:border-white/50 focus:outline-none focus:ring-0"
+                      placeholder="Longitude"
+                    />
+                  </div>
+                </label>
+              </div>
+            </GlassCard>
+
+            <GlassCard className="p-7">
+              <SectionHeader
+                eyebrow="Product imagery"
+                title="Visual assets"
+                description="Showcase your product with high-quality images that represent its features and quality."
               />
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "flex-start", mb: 2 }}>
-              <InfoOutlinedIcon sx={{ color: "#fff", mr: 1, mt: 1 }} />
-              <TextField
-                fullWidth
-                id="description"
-                label="Description"
-                variant="outlined"
-                multiline
-                minRows={2}
-                onChange={(e) => setDescription(e.target.value)}
-                value={description}
-                InputLabelProps={{ style: { color: "#fff" } }}
-                InputProps={{ style: { color: "#fff" } }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    "& fieldset": { borderColor: "#fff" },
-                    "&:hover fieldset": { borderColor: "#90caf9" },
-                    "&.Mui-focused fieldset": { borderColor: "#38bdf8" },
-                  },
-                  mb: 0,
-                }}
-              />
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-              <ImageOutlinedIcon sx={{ color: "#fff", mr: 1 }} />
-              <Button
-                variant="outlined"
-                component="label"
-                fullWidth
-                sx={{
-                  color: "#fff",
-                  borderColor: "#fff",
-                  "&:hover": {
-                    borderColor: "#38bdf8",
-                    background: "rgba(56,189,248,0.08)",
-                  },
-                  mb: 0,
-                }}
-              >
-                Upload Image
-                <input type="file" hidden onChange={handleImage} />
-              </Button>
-            </Box>
-            {image.filepreview !== null ? (
-              <img
-                src={image.filepreview}
-                alt="preview"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: 8,
-                  marginBottom: 16,
-                }}
-              />
+              <Divider className="my-6" />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Attach image
+                  </span>
+                  <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-white/12 bg-white/10 px-4 py-3 transition hover:border-white/20">
+                    <span className="text-sm text-white/70">
+                      {image.file
+                        ? image.file.name
+                        : "PNG, JPG, or GIF (max. 5MB)"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/png, image/jpeg, image/gif"
+                      onChange={handleImage}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                {image.preview ? (
+                  <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl">
+                    <img
+                      src={image.preview}
+                      alt="Product preview"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      className="absolute right-2 top-2 rounded-full bg-black/50 p-2 text-white transition hover:bg-black/60"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                ) : null}
+                {image.file && !image.preview ? (
+                  <div className="text-sm text-white/70">
+                    Image is being uploaded, please wait...
+                  </div>
+                ) : null}
+              </div>
+            </GlassCard>
+
+            {qrData ? (
+              <GlassCard className="p-7" id="add-product-qr-section">
+                <SectionHeader
+                  eyebrow="Product QR code"
+                  title="Verify and download"
+                  description="Ensure the QR code is scannable and contains the correct product data."
+                />
+                <Divider className="my-6" />
+                <div className="flex flex-col gap-4">
+                  <div className="flex justify-center">
+                    <QRCode
+                      id="add-product-qr-canvas"
+                      value={qrData}
+                      size={256}
+                      className="rounded-xl border border-white/10"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={downloadQR}
+                    className={`${glassButtonClass} w-full`}
+                  >
+                    Download QR code
+                  </button>
+                </div>
+              </GlassCard>
             ) : null}
-            {qrData !== "" ? (
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  mt: 2,
-                }}
-              >
-                <QRCode value={qrData} id="QRCode" />
-              </Box>
-            ) : null}
-            {qrData !== "" ? (
-              <Box
-                sx={{
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  mt: 2,
-                }}
-              >
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  sx={{
-                    color: "#fff",
-                    borderColor: "#fff",
-                    "&:hover": {
-                      borderColor: "#38bdf8",
-                      background: "rgba(56,189,248,0.08)",
-                    },
-                    mb: 0,
-                  }}
-                  onClick={downloadQR}
-                >
-                  Download QR
-                </Button>
-              </Box>
-            ) : null}
-            {loading === "" ? null : (
-              <Typography
-                variant="body2"
-                sx={{ textAlign: "center", mt: 2, color: "#fff" }}
-              >
-                {loading}
-              </Typography>
-            )}
-            <Button
-              variant="contained"
-              type="submit"
-              fullWidth
-              sx={{
-                mt: 3,
-                py: 1.5,
-                borderRadius: 2,
-                fontWeight: 700,
-                background: "#fff",
-                color: "#222",
-                fontSize: 18,
-                textTransform: "none",
-                boxShadow: 1,
-                "&:hover": {
-                  background: "#e0e7ef",
-                },
-              }}
-            >
-              Add Product
-            </Button>
-            <Button
-              onClick={handleBack}
-              fullWidth
-              sx={{
-                mt: 2,
-                py: 1.5,
-                borderRadius: 2,
-                fontWeight: 700,
-                background: "#fff",
-                color: "#222",
-                fontSize: 18,
-                textTransform: "none",
-                boxShadow: 1,
-                "&:hover": {
-                  background: "#e0e7ef",
-                },
-              }}
-            >
-              Back
-            </Button>
-          </form>
-        </Paper>
-      </Box>
-    );
-  } catch (err) {
-    console.error("Error rendering AddProduct:", err);
-    return <div>Error rendering AddProduct: {err.message}</div>;
-  }
+          </div>
+
+          <div className="sticky top-20 hidden h-fit max-w-sm flex-col gap-6 lg:flex">
+            <GlassCard className="p-6">
+              <SectionHeader
+                eyebrow="Wallet & location"
+                title="Current session"
+                description="Connected wallet and geolocation data that will be used for product registration."
+              />
+              <Divider className="my-4" />
+              <div className="flex flex-col gap-4 text-sm text-white/70">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Wallet address
+                  </span>
+                  <span>
+                    {walletAddress
+                      ? truncateAddress(walletAddress)
+                      : "Not connected"}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Location
+                  </span>
+                  <span>{formatLocation(manuLocation)}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs uppercase tracking-[0.35em] text-white/40">
+                    Timestamp
+                  </span>
+                  <span>{formatDateTime(dayjs.unix(manuDate).toDate())}</span>
+                </div>
+              </div>
+            </GlassCard>
+
+            <GlassCard className="p-6">
+              <SectionHeader
+                eyebrow="Next steps"
+                title="Ready to register?"
+                description="Once all fields are complete and assets are uploaded, register the product to mint its on-chain identity."
+              />
+              <Divider className="my-4" />
+              <div className="flex flex-col gap-4 text-sm text-white/70">
+                <p>
+                  After registering, you will receive a verifiable QR code that
+                  links to the product's on-chain record.
+                </p>
+                <button type="submit" className={`${glassButtonClass} mt-4`}>
+                  {submitting ? "Registering..." : "Register product"}
+                </button>
+              </div>
+            </GlassCard>
+          </div>
+        </section>
+      </form>
+    </AdminShell>
+  );
 };
 
 export default AddProduct;

@@ -12,6 +12,7 @@ import {
   Divider,
   SectionHeader,
 } from "../admin/ui";
+import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
 
 const deriveOtpAuthUrl = (secret, username) => {
   if (!secret || !username) return null;
@@ -28,6 +29,7 @@ const formatTimestamp = (value) =>
 
 const TwoFactorAuth = () => {
   const { auth, setAuth } = useAuth();
+  const { isManufacturer, sidebarLinks } = useManufacturerWorkspace();
   const navigate = useNavigate();
 
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
@@ -230,6 +232,11 @@ const TwoFactorAuth = () => {
           </button>
         </div>
       }
+      forceSidebar={isManufacturer}
+      sidebarLinks={sidebarLinks}
+      workspaceLabel={isManufacturer ? "Manufacturer Workspace" : undefined}
+      showHeaderNotifications={isManufacturer ? false : undefined}
+      showHeaderProfile={isManufacturer ? false : undefined}
     >
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8">
         <GlassCard className="p-6">

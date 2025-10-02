@@ -5,6 +5,7 @@ import { toast } from "react-hot-toast";
 import { useConfig } from "../../context/ConfigContext";
 import AdminShell from "../admin/AdminShell";
 import { GlassCard, glassButtonClass, SectionHeader } from "../admin/ui";
+import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
 
 const STATUS_STYLES = {
   ok: {
@@ -37,6 +38,7 @@ const formatDate = (value) => {
 
 const TransparencyDashboard = () => {
   const { apiBaseUrl, fileEndpoint } = useConfig();
+  const { isManufacturer, sidebarLinks } = useManufacturerWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -315,6 +317,11 @@ const TransparencyDashboard = () => {
       meta={metaSummary}
       actions={headerActions}
       toolbar={toolbar}
+      forceSidebar={isManufacturer}
+      sidebarLinks={sidebarLinks}
+      workspaceLabel={isManufacturer ? "Manufacturer Workspace" : undefined}
+      showHeaderProfile={isManufacturer ? false : undefined}
+      showHeaderNotifications={isManufacturer ? false : undefined}
     >
       <div className="mx-auto flex w-full max-w-[1450px] flex-col gap-10">
         {error ? (

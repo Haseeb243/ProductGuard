@@ -11,7 +11,6 @@ import {
   Divider,
 } from "../admin/ui";
 import useAuth from "../../hooks/useAuth";
-s;
 const formatNumber = (value) => {
   const number = Number(value || 0);
   if (Number.isNaN(number)) {

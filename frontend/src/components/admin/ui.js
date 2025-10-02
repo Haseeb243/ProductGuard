@@ -57,14 +57,25 @@ export const Divider = ({ className = "" }) => (
   <div className={`h-px w-full bg-white/5 ${className}`} />
 );
 
-export const SectionHeader = ({ title, subtitle = null, actions = null }) => (
+export const SectionHeader = ({
+  eyebrow = null,
+  title,
+  subtitle = null,
+  description = null,
+  actions = null,
+}) => (
   <div className="flex flex-wrap items-center justify-between gap-4">
-    <div>
+    <div className="space-y-1">
+      {eyebrow ? (
+        <p className="text-[11px] font-semibold uppercase tracking-[0.45em] text-white/50">
+          {eyebrow}
+        </p>
+      ) : null}
       <h2 className="text-xl font-semibold text-white tracking-tight">
         {title}
       </h2>
-      {subtitle ? (
-        <p className="mt-1 text-sm text-white/60">{subtitle}</p>
+      {subtitle || description ? (
+        <p className="text-sm text-white/60">{description || subtitle}</p>
       ) : null}
     </div>
     {actions}

@@ -363,59 +363,57 @@ const storageProfile = multer.diskStorage({
   },
 });
 
-function addProduct(
+async function addProduct(
   serialNumber,
   name,
   brand,
   username,
   contractAddress = null
 ) {
-  client.query(
-    "INSERT INTO product (serialNumber, name, brand) VALUES ($1, $2, $3)",
-    [serialNumber, name, brand],
-    async (err, res) => {
-      if (err) {
-        console.log(err.message);
-      } else {
-        logActivity(
-          username,
-          "add_product",
-          serialNumber,
-          `Added product ${name} (${brand})`
+  try {
+    await client.query(
+      "INSERT INTO product (serialNumber, name, brand) VALUES ($1, $2, $3)",
+      [serialNumber, name, brand]
+    );
+
+    logActivity(
+      username,
+      "add_product",
+      serialNumber,
+      `Added product ${name} (${brand})`
+    );
+    console.log("Data insert successful");
+
+    try {
+      const userResult = await client.query(
+        "SELECT email FROM auth WHERE username = $1",
+        [username]
+      );
+
+      if (userResult.rows.length > 0 && userResult.rows[0].email) {
+        const userEmail = userResult.rows[0].email;
+        const productData = {
+          productName: name,
+          brand: brand,
+          serialNumber: serialNumber,
+          contractAddress:
+            contractAddress || process.env.CONTRACT_ADDRESS || null,
+        };
+
+        await emailService.sendProductRegistrationEmail(
+          client,
+          userEmail,
+          productData
         );
-        console.log("Data insert successful");
-
-        // Send email notification for product registration
-        try {
-          // Get user email from profile or auth table
-          const userResult = await client.query(
-            "SELECT email FROM auth WHERE username = $1",
-            [username]
-          );
-
-          if (userResult.rows.length > 0 && userResult.rows[0].email) {
-            const userEmail = userResult.rows[0].email;
-            const productData = {
-              productName: name,
-              brand: brand,
-              serialNumber: serialNumber,
-              contractAddress:
-                contractAddress || process.env.CONTRACT_ADDRESS || null,
-            };
-
-            await emailService.sendProductRegistrationEmail(
-              client,
-              userEmail,
-              productData
-            );
-            console.log(`Product registration email sent to ${userEmail}`);
-          }
-        } catch (emailErr) {
-          console.error("Error sending product registration email:", emailErr);
-        }
+        console.log(`Product registration email sent to ${userEmail}`);
       }
+    } catch (emailErr) {
+      console.error("Error sending product registration email:", emailErr);
     }
-  );
+  } catch (err) {
+    console.log(err.message);
+    throw err;
+  }
 }
 
 // auth
@@ -984,32 +982,58 @@ app.post("/addprofile", (req, res) => {
 // image
 
 app.post("/upload/profile", (req, res) => {
-  let upload = multer({ storage: storageProfile }).single("image");
+  const upload = multer({ storage: storageProfile }).single("image");
 
   upload(req, res, (err) => {
     if (!req.file) {
-      return res.send("Please select an image to upload");
-    } else if (err instanceof multer.MulterError) {
-      return res.send(err);
-    } else if (err) {
-      return res.send(err);
+      return res.status(400).json({
+        success: false,
+        message: "Please select an image to upload",
+      });
     }
+
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
+    if (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+
+    return res.json({
+      success: true,
+      fileName: req.file.filename,
+      originalName: req.file.originalname,
+    });
   });
 });
 
 // product
 
 app.post("/upload/product", (req, res) => {
-  let upload = multer({ storage: storageProduct }).single("image");
+  const upload = multer({ storage: storageProduct }).single("image");
 
   upload(req, res, (err) => {
     if (!req.file) {
-      return res.send("Please select an image to upload");
-    } else if (err instanceof multer.MulterError) {
-      return res.send(err);
-    } else if (err) {
-      return res.send(err);
+      return res.status(400).json({
+        success: false,
+        message: "Please select an image to upload",
+      });
     }
+
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
+    if (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+
+    return res.json({
+      success: true,
+      fileName: req.file.filename,
+      originalName: req.file.originalname,
+    });
   });
 });
 
@@ -1030,7 +1054,7 @@ app.get("/product/serialNumber", async (req, res) => {
   res.send(data.rows);
 });
 
-app.post("/addproduct", (req, res) => {
+app.post("/addproduct", async (req, res) => {
   // Validate input
   const addProductSchema = Joi.object({
     serialNumber: Joi.string().trim().min(1).max(64).required(),
@@ -1052,10 +1076,30 @@ app.post("/addproduct", (req, res) => {
   }
 
   const { serialNumber, name, brand, username, contractAddress } = value;
-  // Prefer username from body (frontend sends the logged-in manufacturer)
   const actor = username || req.user?.username || "admin";
-  addProduct(serialNumber, name, brand, actor, contractAddress || null);
-  res.json({ success: true, message: "Product inserted" });
+
+  try {
+    const existing = await client.query(
+      "SELECT 1 FROM product WHERE serialNumber = $1",
+      [serialNumber]
+    );
+
+    if (existing.rowCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Serial number already exists",
+      });
+    }
+
+    await addProduct(serialNumber, name, brand, actor, contractAddress || null);
+    res.json({ success: true, message: "Product inserted" });
+  } catch (err) {
+    console.error("Add product error:", err?.message || err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to register product",
+    });
+  }
 });
 
 // --- Logging Functions ---
@@ -1540,6 +1584,22 @@ app.get("/transparency/:serialNumber", async (req, res) => {
       return (a.id || 0) - (b.id || 0);
     });
 
+    const resolveEventTimestamp = (event) =>
+      event?.timestampIso ||
+      (typeof event?.timestampUnix === "number"
+        ? unixToIso(event.timestampUnix)
+        : null) ||
+      event?.emittedAt ||
+      event?.createdAt ||
+      null;
+
+    const firstEvent = onChainEvents[0] || null;
+    const lastEvent =
+      onChainEvents.length > 0 ? onChainEvents[onChainEvents.length - 1] : null;
+
+    const firstSeenOnChain = resolveEventTimestamp(firstEvent);
+    const lastActivityAt = resolveEventTimestamp(lastEvent);
+
     let ownershipHistory = [];
     try {
       const ownershipResult = await client.query(
@@ -1574,6 +1634,8 @@ app.get("/transparency/:serialNumber", async (req, res) => {
       onChainEvents,
       ownershipHistory,
       reconciliation,
+      firstSeenOnChain,
+      lastActivityAt,
     });
   } catch (err) {
     console.error("/transparency/:serialNumber error:", err);
@@ -1962,6 +2024,90 @@ app.get("/login-attempts", async (req, res) => {
   } catch (err) {
     console.error("Error fetching login attempts:", err);
     res.status(500).send({ message: err.message });
+  }
+});
+
+app.get("/manufacturer/products-summary", async (req, res) => {
+  try {
+    const username = (req.query.username || "").trim();
+    const daysParam = parseInt(req.query.days, 10);
+    const limitParam = parseInt(req.query.limit, 10);
+
+    if (!username) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Username is required" });
+    }
+
+    const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 30;
+    const limit = Math.min(
+      Math.max(
+        Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10,
+        1
+      ),
+      50
+    );
+
+    const totalsQuery = await client.query(
+      `SELECT
+         COUNT(*)::int AS total_all_time,
+         COUNT(DISTINCT target)::int AS unique_all_time,
+         MAX(log_time) AS last_added_at
+       FROM activity_log
+       WHERE username = $1 AND action = 'add_product'`,
+      [username]
+    );
+
+    const recentQuery = await client.query(
+      `SELECT
+         COUNT(*)::int AS total_recent,
+         COUNT(DISTINCT target)::int AS unique_recent
+       FROM activity_log
+       WHERE username = $1
+         AND action = 'add_product'
+         AND log_time >= NOW() - INTERVAL '${days} days'`,
+      [username]
+    );
+
+    const recentProductsQuery = await client.query(
+      `SELECT
+         al.target AS serial_number,
+         al.log_time,
+         p.name,
+         p.brand,
+         p.created_at
+       FROM activity_log al
+       LEFT JOIN product p ON p.serialnumber = al.target
+       WHERE al.username = $1 AND al.action = 'add_product'
+       ORDER BY al.log_time DESC
+       LIMIT $2`,
+      [username, limit]
+    );
+
+    const totals = totalsQuery.rows?.[0] || {};
+    const recent = recentQuery.rows?.[0] || {};
+
+    return res.json({
+      success: true,
+      username,
+      totalAllTime: totals.total_all_time || 0,
+      uniqueAllTime: totals.unique_all_time || 0,
+      totalRecent: recent.total_recent || 0,
+      uniqueRecent: recent.unique_recent || 0,
+      lastAddedAt: totals.last_added_at || null,
+      recentProducts: recentProductsQuery.rows.map((row) => ({
+        serialNumber: row.serial_number,
+        name: row.name || null,
+        brand: row.brand || null,
+        registeredAt: row.log_time || row.created_at || null,
+      })),
+    });
+  } catch (err) {
+    console.error("/manufacturer/products-summary error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load manufacturer product summary",
+    });
   }
 });
 

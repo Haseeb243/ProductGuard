@@ -24,6 +24,8 @@ import UpdateProductDetails from "./components/pages/UpdateProductDetails";
 import SupportDashboard from "./components/SupportDashboard";
 import TransparencyDashboard from "./components/pages/TransparencyDashboard";
 import AnalyticsDashboard from "./components/pages/AnalyticsDashboard";
+import ManufacturerChat from "./components/pages/ManufacturerChat";
+import ManufacturerWallet from "./components/pages/ManufacturerWallet";
 
 function App() {
   return (
@@ -125,6 +127,16 @@ function App() {
         <Route element={<RequireAuth allowedRoles={["manufacturer"]} />}>
           <Route exact path="/manufacturer" element={<Manufacturer />}></Route>
           <Route exact path="/add-product" element={<AddProduct />}></Route>
+          <Route
+            exact
+            path="/manufacturer-chat"
+            element={<ManufacturerChat />}
+          ></Route>
+          <Route
+            exact
+            path="/manufacturer-wallet"
+            element={<ManufacturerWallet />}
+          ></Route>
         </Route>
 
         <Route element={<RequireAuth allowedRoles={["supplier"]} />}>

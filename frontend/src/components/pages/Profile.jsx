@@ -1,231 +1,268 @@
-import { Box, Paper, Avatar, Typography, Button } from "@mui/material";
-import bgImg from "../../img/bg.png";
-import { useState, useEffect } from "react";
-import axios from "axios";
-import useAuth from "../../hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import dayjs from "dayjs";
+import { Link } from "react-router-dom";
+import { toast } from "react-hot-toast";
+import AdminShell from "../admin/AdminShell";
+import {
+  GlassCard,
+  GradientBorderCard,
+  SectionHeader,
+  glassButtonClass,
+} from "../admin/ui";
+import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
 import { useConfig } from "../../context/ConfigContext";
+import axios from "../../api/axios";
+import { truncateAddress } from "../../utils/wallet";
 
 const Profile = () => {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [role, setRole] = useState("");
-  const [website, setWebsite] = useState("");
-  const [location, setLocation] = useState("");
-  const [image, setImage] = useState({
-    file: [],
-    filepreview: null,
-  });
+  const { auth, sidebarLinks, isManufacturer, walletAddress, connectWallet } =
+    useManufacturerWorkspace();
+  const { fileEndpoint } = useConfig();
 
-  const { auth } = useAuth();
-  const { apiBaseUrl } = useConfig();
-  const navigate = useNavigate();
-
-  const handleBack = () => {
-    navigate(-1);
-  };
-
-  const handleData = async () => {
-    try {
-      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
-      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
-      if (!row) {
-        console.warn("No profile found for user", auth.user, res?.data);
-        return;
-      }
-      setName(row.name || "");
-      setDescription(row.description || "");
-      setRole(row.role || "");
-      setWebsite(row.website || "");
-      setLocation(row.location || "");
-      // image handling: if your API returns image filename under row.image
-      setImage((prev) => ({ ...prev, filepreview: row.image || null }));
-    } catch (e) {
-      console.error("Failed to load profile:", e);
-    }
-  };
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    handleData();
-  }, []);
+    const fetchProfile = async () => {
+      if (!auth?.user) return;
+      setLoading(true);
+      setError("");
+      try {
+        const response = await axios.get(`/profile/${auth.user}`);
+        const row = Array.isArray(response?.data)
+          ? response.data[0]
+          : response?.data?.data?.[0];
+        if (!row) {
+          setProfile(null);
+          toast.error("Profile not found");
+        } else {
+          setProfile(row);
+        }
+      } catch (err) {
+        console.error("Failed to load profile", err);
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Unable to load profile data"
+        );
+        toast.error("Unable to load profile data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [auth?.user]);
+
+  const avatarUrl = useMemo(() => {
+    const filename = profile?.image || profile?.filepreview;
+    if (!filename) return null;
+    if (/^https?:/i.test(filename)) return filename;
+    try {
+      return fileEndpoint("profile", filename.replace(/^\//, ""));
+    } catch {
+      return filename;
+    }
+  }, [fileEndpoint, profile?.filepreview, profile?.image]);
+
+  const metaSummary = useMemo(() => {
+    return [
+      {
+        label: "Account",
+        value: auth?.user || "Unknown",
+        key: "account",
+      },
+      {
+        label: "Role",
+        value: profile?.role
+          ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+          : "—",
+        key: "role",
+      },
+      {
+        label: "Wallet",
+        value: walletAddress ? truncateAddress(walletAddress) : "Not connected",
+        key: "wallet",
+      },
+      {
+        label: "Updated",
+        value: profile?.updated_at
+          ? dayjs(profile.updated_at).format("MMM D, YYYY")
+          : "—",
+        key: "updated",
+      },
+    ];
+  }, [auth?.user, profile?.role, profile?.updated_at, walletAddress]);
+
+  const headerActions = (
+    <div className="flex flex-wrap items-center gap-3">
+      {walletAddress ? (
+        <Link to="/manufacturer-wallet" className={glassButtonClass}>
+          Wallet workspace
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={connectWallet}
+          className={`${glassButtonClass} border-emerald-400/40 bg-emerald-500/10 hover:border-emerald-300/60 hover:bg-emerald-500/20`}
+        >
+          Connect MetaMask
+        </button>
+      )}
+      <Link to="/2fa-settings" className={glassButtonClass}>
+        Manage 2FA
+      </Link>
+    </div>
+  );
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        width: "100vw",
-        backgroundImage: `linear-gradient(rgba(10,10,20,0.85),rgba(10,10,20,0.95)), url(${bgImg})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        position: "relative",
-      }}
+    <AdminShell
+      title="Manufacturer Profile"
+      subtitle="Keep your brand identity and account controls in sync with ProductGuard."
+      meta={metaSummary}
+      actions={headerActions}
+      forceSidebar={isManufacturer}
+      sidebarLinks={sidebarLinks}
+      workspaceLabel={isManufacturer ? "Manufacturer Workspace" : undefined}
+      showHeaderNotifications={false}
+      showHeaderProfile={false}
     >
-      <Box sx={{ width: "100%", maxWidth: 420, px: 2 }}>
-        <Box
-          sx={{
-            borderRadius: 4,
-            p: 0.5,
-            mt: 8,
-            background:
-              "linear-gradient(135deg, #38bdf8 0%, #6366f1 50%, #0ea5e9 100%)",
-            boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.25)",
-          }}
-        >
-          <Paper
-            elevation={0}
-            sx={{
-              borderRadius: 4,
-              p: 5,
-              background: "rgba(24, 28, 40, 0.85)",
-              backdropFilter: "blur(12px)",
-              WebkitBackdropFilter: "blur(12px)",
-              color: "#f3f6fa",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              boxShadow: "0 4px 24px 0 rgba(14, 165, 233, 0.10)",
-            }}
-          >
-            <Avatar
-              sx={{
-                width: 96,
-                height: 96,
-                mb: 2,
-                bgcolor: "primary.main",
-                fontSize: 40,
-                fontWeight: 700,
-                color: "#fff",
-                border: "3px solid #38bdf8",
-                boxShadow: 2,
-              }}
-            >
-              {name ? name[0] : ""}
-            </Avatar>
-            <Typography
-              variant="h4"
-              sx={{
-                fontWeight: 800,
-                mb: 1,
-                color: "#fff",
-                textAlign: "center",
-                letterSpacing: 1,
-                fontFamily: "Gambetta, serif",
-              }}
-            >
-              {name || "Profile"}
-            </Typography>
-            <Typography
-              variant="subtitle1"
-              sx={{
-                color: "#a5b4fc",
-                mb: 3,
-                textAlign: "center",
-                letterSpacing: 1,
-                fontWeight: 600,
-              }}
-            >
-              {role ? role.charAt(0).toUpperCase() + role.slice(1) : ""}
-            </Typography>
-            <Box sx={{ width: "100%", mb: 2 }}>
-              <Typography
-                variant="body1"
-                sx={{ color: "#e0e7ef", mb: 1, fontWeight: 500 }}
-              >
-                <b>Description:</b>{" "}
-                {description || (
-                  <span style={{ color: "#789" }}>No description</span>
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8">
+        {error ? (
+          <GlassCard className="border border-rose-500/40 bg-rose-500/10 text-rose-50">
+            <p className="text-sm font-medium">{error}</p>
+          </GlassCard>
+        ) : null}
+
+        {loading ? (
+          <GlassCard className="p-6 text-sm text-white/60">
+            Loading profile details…
+          </GlassCard>
+        ) : null}
+
+        <GlassCard className="p-6">
+          <SectionHeader
+            title="Profile overview"
+            subtitle="Edit profile details via the support team while we finalize the self-service editor."
+          />
+          <div className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="relative h-32 w-32 overflow-hidden rounded-3xl border border-white/15 bg-white/5">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={profile?.name || "Profile avatar"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-4xl font-semibold text-white/80">
+                    {(profile?.name || auth?.user || "?")
+                      .toString()
+                      .charAt(0)
+                      .toUpperCase()}
+                  </div>
                 )}
-              </Typography>
-              <Typography
-                variant="body1"
-                sx={{ color: "#e0e7ef", mb: 1, fontWeight: 500 }}
-              >
-                <b>Website:</b>{" "}
-                {website ? (
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-white">
+                  {profile?.name || "Pending profile"}
+                </p>
+                <p className="text-sm text-white/60">
+                  {profile?.role
+                    ? profile.role.charAt(0).toUpperCase() +
+                      profile.role.slice(1)
+                    : "Manufacturer"}
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Description
+                </p>
+                <p className="mt-3 text-white/80">
+                  {profile?.description || "No description provided yet."}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Website
+                </p>
+                {profile?.website ? (
                   <a
                     href={
-                      website.startsWith("http")
-                        ? website
-                        : `https://${website}`
+                      profile.website.startsWith("http")
+                        ? profile.website
+                        : `https://${profile.website}`
                     }
+                    className="mt-3 inline-flex items-center text-sm font-semibold text-sky-200 underline decoration-dotted underline-offset-4"
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{ color: "#38bdf8", textDecoration: "underline" }}
                   >
-                    {website}
+                    {profile.website}
                   </a>
                 ) : (
-                  <span style={{ color: "#789" }}>No website</span>
+                  <p className="mt-3 text-white/80">No website supplied.</p>
                 )}
-              </Typography>
-              <Typography
-                variant="body1"
-                sx={{ color: "#e0e7ef", mb: 1, fontWeight: 500 }}
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Location
+                </p>
+                <p className="mt-3 text-white/80">
+                  {profile?.location || "Location details pending."}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Two-factor authentication
+                </p>
+                <p className="mt-3 text-white/80">
+                  {auth?.is2FAEnabled ? "Enabled" : "Disabled"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+
+        <GradientBorderCard>
+          <div className="space-y-6">
+            <SectionHeader
+              title="Workspace shortcuts"
+              subtitle="Hop to other manufacturer tools that rely on your account profile."
+            />
+            <div className="grid gap-5 md:grid-cols-2">
+              <Link
+                to="/add-product"
+                className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70 transition hover:border-white/30 hover:bg-white/10"
               >
-                <b>Location:</b>{" "}
-                {location || <span style={{ color: "#789" }}>No location</span>}
-              </Typography>
-              <Typography
-                variant="body1"
-                sx={{ color: "#e0e7ef", mb: 2, fontWeight: 500 }}
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Register products
+                </p>
+                <p className="mt-3">
+                  Link new products to the Identeefi contract with on-chain
+                  provenance. Your profile details stamp each product with brand
+                  metadata.
+                </p>
+              </Link>
+              <Link
+                to="/transparency"
+                className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70 transition hover:border-white/30 hover:bg-white/10"
               >
-                <b>Two-Factor Authentication:</b>{" "}
-                <span
-                  style={{
-                    color: auth.is2FAEnabled ? "#10b981" : "#f59e0b",
-                    fontWeight: 600,
-                  }}
-                >
-                  {auth.is2FAEnabled ? "Enabled ✓" : "Disabled"}
-                </span>
-                <Button
-                  onClick={() => navigate("/2fa-settings")}
-                  size="small"
-                  sx={{
-                    ml: 2,
-                    color: "#38bdf8",
-                    textTransform: "none",
-                    fontSize: "0.875rem",
-                    "&:hover": {
-                      backgroundColor: "rgba(56, 189, 248, 0.1)",
-                    },
-                  }}
-                >
-                  Manage
-                </Button>
-              </Typography>
-            </Box>
-            <Button
-              onClick={handleBack}
-              variant="contained"
-              sx={{
-                mt: 2,
-                px: 4,
-                py: 1.5,
-                borderRadius: 2,
-                fontWeight: 700,
-                background: "linear-gradient(90deg, #38bdf8 0%, #6366f1 100%)",
-                color: "#fff",
-                boxShadow: 1,
-                letterSpacing: 1,
-                fontSize: 16,
-                textTransform: "none",
-                "&:hover": {
-                  background:
-                    "linear-gradient(90deg, #0ea5e9 0%, #6366f1 100%)",
-                },
-              }}
-            >
-              Back
-            </Button>
-          </Paper>
-        </Box>
-      </Box>
-    </Box>
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                  Transparency dashboard
+                </p>
+                <p className="mt-3">
+                  Investigate cross-ledger reconciliation for serialized goods
+                  and ensure ownership events match what you expect in market.
+                </p>
+              </Link>
+            </div>
+          </div>
+        </GradientBorderCard>
+      </div>
+    </AdminShell>
   );
 };
 
