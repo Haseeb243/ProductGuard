@@ -24,3 +24,4 @@ package-lock.json
 # Ignore coverage
 coverage/
 
+db_backup.sql

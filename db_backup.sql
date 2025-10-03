@@ -5,7 +5,7 @@
 -- Dumped from database version 17.4
 -- Dumped by pg_dump version 17.4
 
--- Started on 2025-10-01 04:52:15
+-- Started on 2025-10-04 03:58:54
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -805,6 +805,35 @@ COPY public.activity_log (id, username, action, target, details, log_time, metad
 178	admin	product_verification_scan	a243	Verification scan - Authentic: true, Suspicious: false	2025-10-01 04:04:35.434634	\N
 179	manu	add_product	a2321	Added product Easysmx x05 (Easysmx)	2025-10-01 04:48:21.699927	\N
 180	supp	product_verification_scan	a2321	Verification scan - Authentic: true, Suspicious: false	2025-10-01 04:49:01.658126	\N
+181	manu	product_verification_scan	a2321	Verification scan - Authentic: true, Suspicious: false	2025-10-01 15:34:06.672249	\N
+182	manu	product_verification_scan	a243	Verification scan - Authentic: true, Suspicious: false	2025-10-01 15:34:41.140976	\N
+183	manu	add_product	pa11	Added product Easysmx x05 (Easysmx)	2025-10-02 22:04:14.289484	\N
+184	admin	add_account	manufacturer_test	Added account with role manufacturer	2025-10-03 01:37:46.486157	\N
+185	manu	add_product	pa111	Added product easysmx (Easysmx)	2025-10-03 01:43:23.551505	\N
+186	supp	product_verification_scan	pa11	Verification scan - Authentic: true, Suspicious: false	2025-10-03 01:46:30.799932	\N
+187	retailer	product_verification_scan	pa11	Verification scan - Authentic: true, Suspicious: false	2025-10-03 01:47:48.321181	\N
+188	retailer	ownership_transfer	pa11	Ownership set to aizaz (0909)	2025-10-03 01:48:43.714844	\N
+189	manu	add_product	pa12	Added product easysmx (Easysmx)	2025-10-03 01:57:24.304356	\N
+190	supp	product_verification_scan	pa12	Verification scan - Authentic: true, Suspicious: false	2025-10-03 01:59:24.405446	\N
+191	retailer	product_verification_scan	pa12	Verification scan - Authentic: true, Suspicious: false	2025-10-03 02:10:38.568512	\N
+192	retailer	ownership_transfer	pa12	Ownership set to haseeb (sadfh)	2025-10-03 02:10:56.115203	\N
+193	manu	add_product	pg-12	Added product easysmx (Easysmx)	2025-10-03 02:12:49.619238	\N
+194	supp	product_verification_scan	pg-12	Verification scan - Authentic: true, Suspicious: false	2025-10-03 02:18:37.348243	\N
+195	supp	product_verification_scan	pa12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 02:41:04.750492	\N
+196	supp	product_verification_scan	pa12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 02:52:27.047038	\N
+197	manu	add_product	pg12	Added product easysmx (Easysmx)	2025-10-04 02:53:52.886772	\N
+198	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 02:54:32.466777	\N
+199	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 02:56:26.278721	\N
+200	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 02:57:29.250259	\N
+201	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:07:10.23059	\N
+202	supp	product_verification_scan	a123221	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:07:58.024845	\N
+203	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:10:03.769905	\N
+204	retailer	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:14:09.964928	\N
+205	retailer	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:14:52.302469	\N
+206	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:15:26.068584	\N
+207	retailer	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:23:07.924911	\N
+208	retailer	ownership_transfer	pg12	Ownership set to Azzy (03458384)	2025-10-04 03:23:56.27391	\N
+209	supp	product_verification_scan	pg12	Verification scan - Authentic: true, Suspicious: false	2025-10-04 03:49:22.369919	\N
 \.
 
 
@@ -816,10 +845,11 @@ COPY public.activity_log (id, username, action, target, details, log_time, metad
 
 COPY public.auth (username, password, id, role, email, created_at, last_login, is_2fa_enabled, two_factor_secret) FROM stdin;
 pak	$2b$12$lZ44S1hWadWGji6vGagIY.gvyChX1bkEqdegOz7Lfwv48nT3A3hyW	7	manufacturer	haseebahmad8986@gmail.com	2025-09-28 04:18:10.284367+05	2025-09-28 04:18:45.564222+05	f	\N
-retailer	$2b$10$7fMH7GEDafCif4jYZgEH7eNFnpdEyfVmnWsOBogmcGmAJ37WeWdQO	56	retailer	retailer@example.com	2025-09-23 22:01:49.390002+05	2025-10-01 03:57:30.325251+05	f	\N
-admin	$2b$10$BfwA/cfAtfYsGdt6WzT/5ekqE68oXTUIqyyUKseBKpjZp.vAxowEe	1	admin	haseebahmad8985@gmail.com	2025-09-23 22:01:49.390002+05	2025-10-01 04:33:51.716642+05	f	IJWWCORGHBJCCKLWKM6DGZJZNZ5FAVZYOFLSQLS6ERRV4I3JPV5A
-manu	$2b$10$.0YhdQwx8djxU6LB81ulhOsLYeqqSdb0MXy6.VL56c5oBZe.dNXKa	54	manufacturer	aizazalikhan817@gmail.com	2025-09-23 22:01:49.390002+05	2025-10-01 04:47:46.362323+05	f	\N
-supp	$2b$10$iDkDDl47RgRZ2fJ8hY9IeuOuhrvgs/eWtYM1XcdsrJ2lvn2SDJpiu	3	supplier	supp@example.com	2025-09-23 22:01:49.390002+05	2025-10-01 04:48:51.91763+05	f	\N
+retailer	$2b$10$7fMH7GEDafCif4jYZgEH7eNFnpdEyfVmnWsOBogmcGmAJ37WeWdQO	56	retailer	retailer@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:24:13.926603+05	f	\N
+admin	$2b$10$BfwA/cfAtfYsGdt6WzT/5ekqE68oXTUIqyyUKseBKpjZp.vAxowEe	1	admin	haseebahmad8985@gmail.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:50:59.058581+05	f	HY7VI4TTMZXFO5SIKUZG6I3WLZKHQKR3LAYSUVDNLVCTKLSDOMYA
+supp	$2b$10$iDkDDl47RgRZ2fJ8hY9IeuOuhrvgs/eWtYM1XcdsrJ2lvn2SDJpiu	3	supplier	supp@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:54:58.720626+05	f	\N
+manufacturer_test	$2b$10$uWGPUMjM0/9xHNPLkQzjCe4yLz3T3vHqeKvlPn7F4YutcX4JoidlS	8	manufacturer	manufacturer_test@example.com	2025-10-03 01:37:46.476035+05	\N	f	\N
+manu	$2b$10$.0YhdQwx8djxU6LB81ulhOsLYeqqSdb0MXy6.VL56c5oBZe.dNXKa	54	manufacturer	aizazalikhan817@gmail.com	2025-09-23 22:01:49.390002+05	2025-10-04 02:53:23.518447+05	f	\N
 \.
 
 
@@ -843,6 +873,28 @@ COPY public.chain_events (id, serial_number, event_name, tx_hash, payload, creat
 44	a243	ProductHistoryAdded	0xda1a25bc4be818e2b5b062ab6e1d272b161e9d52fe3eb0e1294990ff123555a9	{"actor": "RE retailer", "isSold": true, "source": "on-chain", "location": "Islamabad; Pakistan", "timestamp": "1759273083", "serialHash": "0xb0297d2fc9d901ab993175641d57a9515c1b7a0a3c25b65329b09bf4f4848fec", "serialNumber": "a243", "timestampUnix": 1759273083}	2025-10-01 03:59:14.140844+05	6	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-01 03:59:12+05
 46	a2321	ProductRegistered	0x51bf1e60ebdc8b6c315f3cc1069eebb73d2e78accf05dfede89756ccb13adb08	{"name": "Easysmx x05", "actor": "Manu Group", "brand": "Easysmx", "isSold": false, "source": "on-chain", "location": "Islamabad; Pakistan; Zone IV; PK-IS; Asia; Indian subcontinent; Asia/Karachi; Chak Shahzad", "timestamp": "1759276088", "serialHash": "0x7aaa4e5dc0b272e1ea3e264067f28dd554e16b32602ad2933ca762a30b6c9e49", "serialNumber": "a2321", "timestampUnix": 1759276088}	2025-10-01 04:48:22.229358+05	7	1	ProductRegistered(string,string,string,string,string,string)	2025-10-01 04:48:20+05
 47	a2321	ProductHistoryAdded	0x51bf1e60ebdc8b6c315f3cc1069eebb73d2e78accf05dfede89756ccb13adb08	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "Islamabad; Pakistan; Zone IV; PK-IS; Asia; Indian subcontinent; Asia/Karachi; Chak Shahzad", "timestamp": "1759276088", "serialHash": "0x7aaa4e5dc0b272e1ea3e264067f28dd554e16b32602ad2933ca762a30b6c9e49", "serialNumber": "a2321", "timestampUnix": 1759276088}	2025-10-01 04:48:22.232005+05	7	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-01 04:48:20+05
+50	pa11	ProductRegistered	0xeed8d612d314ea74b32402a794a588a83d603a4577d66466c9dbecf5a9e00497	{"name": "Easysmx x05", "actor": "Manu Group", "brand": "Easysmx", "isSold": false, "source": "on-chain", "location": "Islamabad; Pakistan; Zone IV; PK-IS; Asia; Indian subcontinent; Asia/Karachi; Chak Shahzad", "timestamp": "1759424629", "serialHash": "0xb2bf0bfec6feba62c64ad7ea94c4697867b74cae5922aa3e7994e7628f0a7d26", "serialNumber": "pa11", "timestampUnix": 1759424629}	2025-10-02 22:04:15.666097+05	8	1	ProductRegistered(string,string,string,string,string,string)	2025-10-02 22:04:13+05
+51	pa11	ProductHistoryAdded	0xeed8d612d314ea74b32402a794a588a83d603a4577d66466c9dbecf5a9e00497	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "Islamabad; Pakistan; Zone IV; PK-IS; Asia; Indian subcontinent; Asia/Karachi; Chak Shahzad", "timestamp": "1759424629", "serialHash": "0xb2bf0bfec6feba62c64ad7ea94c4697867b74cae5922aa3e7994e7628f0a7d26", "serialNumber": "pa11", "timestampUnix": 1759424629}	2025-10-02 22:04:15.668784+05	8	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-02 22:04:13+05
+52	Manu Group	ProductHistoryAdded	0xf331822c0d5d557281964841eb806596888be48c9fcd230d0804351e1c08f4db	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "", "timestamp": "1759428267", "serialHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "serialNumber": "Manu Group", "timestampUnix": 1759428267}	2025-10-02 23:04:38.226713+05	9	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-02 23:04:34+05
+56	pa111	ProductRegistered	0x3512ddbed535b106bfd78646b83cec5a6c52829d8fe39202d3cfa774dd15102b	{"name": "easysmx", "actor": "Manu Group", "brand": "Easysmx", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759437072", "serialHash": "0x3e2801e885ee80265e2ae9f14015ff90b83ceda25aef7e4faf8269756b642892", "serialNumber": "pa111", "timestampUnix": 1759437072}	2025-10-03 01:43:24.438849+05	10	1	ProductRegistered(string,string,string,string,string,string)	2025-10-03 01:43:22+05
+57	pa111	ProductHistoryAdded	0x3512ddbed535b106bfd78646b83cec5a6c52829d8fe39202d3cfa774dd15102b	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759437072", "serialHash": "0x3e2801e885ee80265e2ae9f14015ff90b83ceda25aef7e4faf8269756b642892", "serialNumber": "pa111", "timestampUnix": 1759437072}	2025-10-03 01:43:24.442547+05	10	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 01:43:22+05
+58	pa11	ProductHistoryAdded	0x8803030b7c474e7fab919037e8290b6830b24efe9bad77570b0d2a1311f258dd	{"actor": "CK Supplier", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759438002", "serialHash": "0xb2bf0bfec6feba62c64ad7ea94c4697867b74cae5922aa3e7994e7628f0a7d26", "serialNumber": "pa11", "timestampUnix": 1759438002}	2025-10-03 01:46:52.898839+05	11	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 01:46:51+05
+59	pa11	ProductHistoryAdded	0xb1ffc45b4e7eb0e559faeae4d9d6fe933e443cd7db5a436b665819ecbf96541c	{"actor": "RE retailer", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759438077", "serialHash": "0xb2bf0bfec6feba62c64ad7ea94c4697867b74cae5922aa3e7994e7628f0a7d26", "serialNumber": "pa11", "timestampUnix": 1759438077}	2025-10-03 01:48:29.113805+05	12	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 01:48:27+05
+60	pa11	ProductHistoryAdded	0xaf27ab6335849a6131b6302a1516dbef97e2ee7bf9cb00c1061770517a7349aa	{"actor": "RE retailer", "isSold": true, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759438077", "serialHash": "0xb2bf0bfec6feba62c64ad7ea94c4697867b74cae5922aa3e7994e7628f0a7d26", "serialNumber": "pa11", "timestampUnix": 1759438077}	2025-10-03 01:48:43.832891+05	13	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 01:48:42+05
+62	pa12	ProductRegistered	0x5544b5b7492c3fb9f5861b92369ac1ff72a1ed8c20bf894cd9de313e49bf85a0	{"name": "easysmx", "actor": "Manu Group", "brand": "Easysmx", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759438633", "serialHash": "0xed061d4d7371d49acc4e04dc31c0f6c1cfa0f22c8c5ace509789863e07ea1b60", "serialNumber": "pa12", "timestampUnix": 1759438633}	2025-10-03 01:57:26.170531+05	14	1	ProductRegistered(string,string,string,string,string,string)	2025-10-03 01:57:23+05
+63	pa12	ProductHistoryAdded	0x5544b5b7492c3fb9f5861b92369ac1ff72a1ed8c20bf894cd9de313e49bf85a0	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759438633", "serialHash": "0xed061d4d7371d49acc4e04dc31c0f6c1cfa0f22c8c5ace509789863e07ea1b60", "serialNumber": "pa12", "timestampUnix": 1759438633}	2025-10-03 01:57:26.179161+05	14	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 01:57:23+05
+64	pa12	ProductHistoryAdded	0xb374d911a25df1d117307bca48a14bc11a7eec1318e369594d7fc3cb866b0039	{"actor": "CK Supplier", "isSold": false, "source": "on-chain", "location": "", "timestamp": "1759438768", "serialHash": "0xed061d4d7371d49acc4e04dc31c0f6c1cfa0f22c8c5ace509789863e07ea1b60", "serialNumber": "pa12", "timestampUnix": 1759438768}	2025-10-03 01:59:58.4818+05	15	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 01:59:55+05
+65	pa12	ProductHistoryAdded	0x22b6656bf5f40817bad98f045decec3053a13b23342c34ee2d7690a7fad473e5	{"actor": "RE retailer", "isSold": true, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759439441", "serialHash": "0xed061d4d7371d49acc4e04dc31c0f6c1cfa0f22c8c5ace509789863e07ea1b60", "serialNumber": "pa12", "timestampUnix": 1759439441}	2025-10-03 02:10:56.666636+05	2	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 02:10:56+05
+66	pg-12	ProductRegistered	0x6030c21f2662fbe7ece3a97a0172ed6f58b1b0631eaecfc9ad06186d177c8c1e	{"name": "easysmx", "actor": "Manu Group", "brand": "Easysmx", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759439545", "serialHash": "0x8e36553ca0d13bae567ed44fa63a29b6b01bb7bc7e11c2a23d3b05c1c85a3213", "serialNumber": "pg-12", "timestampUnix": 1759439545}	2025-10-03 02:12:52.922368+05	3	1	ProductRegistered(string,string,string,string,string,string)	2025-10-03 02:12:49+05
+67	pg-12	ProductHistoryAdded	0x6030c21f2662fbe7ece3a97a0172ed6f58b1b0631eaecfc9ad06186d177c8c1e	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759439545", "serialHash": "0x8e36553ca0d13bae567ed44fa63a29b6b01bb7bc7e11c2a23d3b05c1c85a3213", "serialNumber": "pg-12", "timestampUnix": 1759439545}	2025-10-03 02:12:52.929829+05	3	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 02:12:49+05
+68	pg-12	ProductHistoryAdded	0xdaa27324e5a6e7e6505c632b3fe3294237d7678fb600471d25d3c3b8727e0061	{"actor": "CK Supplier", "isSold": false, "source": "on-chain", "location": "", "timestamp": "1759439922", "serialHash": "0x8e36553ca0d13bae567ed44fa63a29b6b01bb7bc7e11c2a23d3b05c1c85a3213", "serialNumber": "pg-12", "timestampUnix": 1759439922}	2025-10-03 02:18:49.677013+05	4	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-03 02:18:47+05
+71	pg12	ProductRegistered	0x6ee1a81c059f08a9038300c0a53263d1814ac82beb58f81eea0cee60b4d6029d	{"name": "easysmx", "actor": "Manu Group", "brand": "Easysmx", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759528408", "serialHash": "0x4f7e2de18895140036269c556cdefbf440b0626c4ca7b94ba1bfd21748584487", "serialNumber": "pg12", "timestampUnix": 1759528408}	2025-10-04 02:53:54.825465+05	2	1	ProductRegistered(string,string,string,string,string,string)	2025-10-04 02:53:51+05
+72	pg12	ProductHistoryAdded	0x6ee1a81c059f08a9038300c0a53263d1814ac82beb58f81eea0cee60b4d6029d	{"actor": "Manu Group", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759528408", "serialHash": "0x4f7e2de18895140036269c556cdefbf440b0626c4ca7b94ba1bfd21748584487", "serialNumber": "pg12", "timestampUnix": 1759528408}	2025-10-04 02:53:54.832981+05	2	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-04 02:53:51+05
+73	pg12	ProductHistoryAdded	0x1a858bf1ef3d4d05d0807cecef924500a47c23afff821028977e6580fe9531e3	{"actor": "CK Supplier", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759528499", "serialHash": "0x4f7e2de18895140036269c556cdefbf440b0626c4ca7b94ba1bfd21748584487", "serialNumber": "pg12", "timestampUnix": 1759528499}	2025-10-04 02:55:10.983334+05	3	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-04 02:55:06+05
+74	CK Supplier	ProductHistoryAdded	0xb03f6154d9b38de1c644daf272eeed169501852fa992945072b35ef941f0cce1	{"actor": "CK Supplier", "isSold": false, "source": "on-chain", "location": "lat:33.658626506415246;lon:73.15572192464732", "timestamp": "1759528878", "serialHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "serialNumber": "CK Supplier", "timestampUnix": 1759528878}	2025-10-04 03:01:43.791706+05	4	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-04 03:01:39+05
+75	pg12	ProductHistoryAdded	0x34deba05b10bac073da8f37d9e642fa2ee5258fb01f61ef9c0b20c0c526b2cdf	{"actor": "RE retailer", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759530196", "serialHash": "0x4f7e2de18895140036269c556cdefbf440b0626c4ca7b94ba1bfd21748584487", "serialNumber": "pg12", "timestampUnix": 1759530196}	2025-10-04 03:23:34.26671+05	5	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-04 03:23:32+05
+76	pg12	ProductHistoryAdded	0x44e295ba905811444b27323e67315d9ac0996b4ae1bae6f7f26ad8863c101d89	{"actor": "RE retailer", "isSold": true, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759530196", "serialHash": "0x4f7e2de18895140036269c556cdefbf440b0626c4ca7b94ba1bfd21748584487", "serialNumber": "pg12", "timestampUnix": 1759530196}	2025-10-04 03:23:58.316095+05	6	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-04 03:23:55+05
+77	pg12	ProductHistoryAdded	0x1dc54e10b367d563e9ac607104e4ca83a5f4c025f5d3f32644439887ebf70927	{"actor": "CK Supplier", "isSold": false, "source": "on-chain", "location": "Chak Shahzad; Islamabad; Pakistan", "timestamp": "1759531769", "serialHash": "0x4f7e2de18895140036269c556cdefbf440b0626c4ca7b94ba1bfd21748584487", "serialNumber": "pg12", "timestampUnix": 1759531769}	2025-10-04 03:49:45.258699+05	7	0	ProductHistoryAdded(string,string,string,string,bool)	2025-10-04 03:49:42+05
 \.
 
 
@@ -855,6 +907,9 @@ COPY public.chain_events (id, serial_number, event_name, tx_hash, payload, creat
 COPY public.consumer_ownership (id, serial_number, owner_name, acquired_at, transferred_at, created_at, owner_identifier) FROM stdin;
 1	a112	aizaz	2025-09-30 06:22:53.311736+05	\N	2025-09-30 06:22:53.311736+05	7979
 2	a243	Pakistan	2025-10-01 03:59:13.441587+05	\N	2025-10-01 03:59:13.441587+05	09877
+3	pa11	aizaz	2025-10-03 01:48:43.709864+05	\N	2025-10-03 01:48:43.709864+05	0909
+4	pa12	haseeb	2025-10-03 02:10:56.110327+05	\N	2025-10-03 02:10:56.110327+05	sadfh
+5	pg12	Azzy	2025-10-04 03:23:56.263653+05	\N	2025-10-04 03:23:56.263653+05	03458384
 \.
 
 
@@ -1885,6 +1940,76 @@ COPY public.login_attempts (id, username, attempt_time, success, ip_address, use
 998	admin	2025-10-01 04:33:51.719016	t	::1	\N
 999	manu	2025-10-01 04:47:46.364644	t	::1	\N
 1000	supp	2025-10-01 04:48:51.919238	t	::1	\N
+1001	admin	2025-10-01 05:06:09.609869	t	::1	\N
+1002	admin	2025-10-01 05:10:12.356573	t	::1	\N
+1003	admin	2025-10-01 06:27:37.787949	t	::1	\N
+1004	manu	2025-10-01 14:53:11.859853	t	::1	\N
+1005	admin	2025-10-02 01:21:26.309017	t	::1	\N
+1006	admin	2025-10-02 01:34:27.24251	t	::1	\N
+1007	admin	2025-10-02 02:16:20.314751	t	::1	\N
+1008	manu	2025-10-02 02:20:50.509517	t	::1	\N
+1009	manu	2025-10-02 02:20:56.551639	t	::1	\N
+1010	manu	2025-10-02 02:21:00.773057	t	::1	\N
+1011	admin	2025-10-02 02:26:39.496735	t	::1	\N
+1012	supp	2025-10-02 02:36:50.410261	t	::1	\N
+1013	admin	2025-10-02 02:46:12.168734	t	::1	\N
+1014	admin	2025-10-02 02:47:07.387721	t	::1	\N
+1015	admin	2025-10-02 02:48:34.446021	t	::1	\N
+1016	supp	2025-10-02 02:52:33.873626	t	::1	\N
+1017	admin	2025-10-02 02:52:41.352601	t	::1	\N
+1018	admin	2025-10-02 02:57:11.615634	t	::1	\N
+1019	admin	2025-10-02 03:17:15.182054	t	::1	\N
+1020	supp	2025-10-02 03:22:13.091974	f	::1	\N
+1021	admin	2025-10-02 03:22:16.921691	t	::1	\N
+1022	supp	2025-10-02 03:28:41.9276	t	::1	\N
+1023	manu	2025-10-02 03:31:17.968614	t	::1	\N
+1024	admin	2025-10-02 14:04:22.273687	t	::1	\N
+1025	manu	2025-10-02 21:43:32.255941	t	::1	\N
+1026	admin	2025-10-02 21:51:29.923669	t	::1	\N
+1027	manu	2025-10-02 21:52:36.955381	t	::1	\N
+1028	manu	2025-10-02 22:36:22.945057	t	::1	\N
+1029	manu	2025-10-02 22:37:50.067467	t	::1	\N
+1030	manu	2025-10-03 00:25:17.042772	t	::1	\N
+1031	manu	2025-10-03 01:21:42.744226	f	::1	\N
+1032	manu	2025-10-03 01:21:46.214383	f	::1	\N
+1033	manu	2025-10-03 01:21:50.852109	f	::1	\N
+1034	manu	2025-10-03 01:22:37.603492	t	::1	\N
+1035	manu	2025-10-03 01:27:04.012019	t	::1	\N
+1036	manu	2025-10-03 01:35:46.527376	t	::1	\N
+1037	manu	2025-10-03 01:39:41.781401	t	::1	\N
+1038	supp	2025-10-03 01:45:28.599584	t	::1	\N
+1039	retailer	2025-10-03 01:47:37.252347	t	::1	\N
+1040	manu	2025-10-03 01:56:39.953205	t	::1	\N
+1041	retailer	2025-10-03 01:58:25.753176	t	::1	\N
+1042	supp	2025-10-03 01:58:30.060869	t	::1	\N
+1043	retailer	2025-10-03 02:00:09.670796	t	::1	\N
+1044	retailer	2025-10-03 02:00:25.165351	t	::1	\N
+1045	retailer	2025-10-03 02:10:30.555642	t	::1	\N
+1046	manu	2025-10-03 02:12:03.504607	t	::1	\N
+1047	manu	2025-10-03 02:12:13.485844	t	::1	\N
+1048	retailer	2025-10-03 02:17:13.013085	t	::1	\N
+1049	supp	2025-10-03 02:17:20.185771	t	::1	\N
+1050	manu	2025-10-03 02:19:53.398955	t	::1	\N
+1051	supp	2025-10-03 02:48:13.409787	t	::1	\N
+1052	manu	2025-10-03 02:48:42.91972	t	::1	\N
+1053	supp	2025-10-03 03:12:41.111038	t	::1	\N
+1054	supp	2025-10-04 01:48:33.951123	t	::1	\N
+1055	manu	2025-10-04 02:53:23.520079	t	::1	\N
+1056	supp	2025-10-04 02:54:21.600168	t	::1	\N
+1057	admin	2025-10-04 02:59:53.788575	t	::1	\N
+1058	supp	2025-10-04 03:01:09.853481	t	::1	\N
+1059	retailer	2025-10-04 03:13:19.185838	t	::1	\N
+1060	supp	2025-10-04 03:15:19.821934	t	::1	\N
+1061	retailer	2025-10-04 03:15:47.246473	t	::1	\N
+1062	supp	2025-10-04 03:16:55.587297	t	::1	\N
+1063	retailer	2025-10-04 03:22:31.807647	t	::1	\N
+1064	retailer	2025-10-04 03:24:13.928361	t	::1	\N
+1065	supp	2025-10-04 03:25:10.972184	t	::1	\N
+1066	admin	2025-10-04 03:27:35.308166	t	::1	\N
+1067	supp	2025-10-04 03:31:11.336582	t	::1	\N
+1068	supp	2025-10-04 03:48:47.532677	t	::1	\N
+1069	admin	2025-10-04 03:50:59.060616	t	::1	\N
+1070	supp	2025-10-04 03:54:58.727376	t	::1	\N
 \.
 
 
@@ -1961,6 +2086,16 @@ COPY public.notification_log (id, type, recipient, subject, body, status, create
 64	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: Easysmx x05\n- Brand: Easysmx\n- Serial Number: a243\n- Registration Date: 10/1/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Ca243\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-01 03:52:34.0684+05	2025-10-01 03:52:34.067+05	\N
 65	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: Easysmx x05\n- Brand: Easysmx\n- Serial Number: a2321\n- Registration Date: 10/1/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Ca2321\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	queued	2025-10-01 04:48:21.742681+05	\N	\N
 66	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: Easysmx x05\n- Brand: Easysmx\n- Serial Number: a2321\n- Registration Date: 10/1/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Ca2321\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-01 04:48:24.23579+05	2025-10-01 04:48:24.235+05	\N
+67	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: Easysmx x05\n- Brand: Easysmx\n- Serial Number: pa11\n- Registration Date: 10/2/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpa11\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	queued	2025-10-02 22:04:14.303737+05	\N	\N
+68	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: Easysmx x05\n- Brand: Easysmx\n- Serial Number: pa11\n- Registration Date: 10/2/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpa11\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-02 22:04:16.941153+05	2025-10-02 22:04:16.94+05	\N
+69	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pa111\n- Registration Date: 10/3/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpa111\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	queued	2025-10-03 01:43:23.565959+05	\N	\N
+70	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pa111\n- Registration Date: 10/3/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpa111\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-03 01:43:26.342361+05	2025-10-03 01:43:26.341+05	\N
+71	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pa12\n- Registration Date: 10/3/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpa12\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	queued	2025-10-03 01:57:24.310442+05	\N	\N
+72	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pa12\n- Registration Date: 10/3/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpa12\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-03 01:57:26.821126+05	2025-10-03 01:57:26.82+05	\N
+73	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pg-12\n- Registration Date: 10/3/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpg-12\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	queued	2025-10-03 02:12:49.648136+05	\N	\N
+74	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pg-12\n- Registration Date: 10/3/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpg-12\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-03 02:12:52.267578+05	2025-10-03 02:12:52.266+05	\N
+75	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pg12\n- Registration Date: 10/4/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpg12\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	queued	2025-10-04 02:53:52.915145+05	\N	\N
+76	productRegistration	aizazalikhan817@gmail.com	Product Registration Confirmation	Dear User,\n\nYour product has been successfully registered in ProductGuard.\n\nProduct Details:\n- Name: easysmx\n- Brand: Easysmx\n- Serial Number: pg12\n- Registration Date: 10/4/2025\n\nScan QR to verify product:\nhttps://api.qrserver.com/v1/create-qr-code/?size=250x250&data=0x5FbDB2315678afecb367f032d93F642f64180aa3%2Cpg12\n\nThank you for using ProductGuard to protect your product authenticity.\n\nBest regards,\nProductGuard Team	sent	2025-10-04 02:53:56.882402+05	2025-10-04 02:53:56.881+05	\N
 \.
 
 
@@ -2019,6 +2154,11 @@ Easysmx x05	a323	Easysmx	\N	\N	2025-10-01 03:05:29.32547+05	\N
 Easysmx x05	a212	Easysmx	\N	\N	2025-10-01 03:11:57.588953+05	\N
 Easysmx x05	a243	Easysmx	\N	\N	2025-10-01 03:52:31.391285+05	\N
 Easysmx x05	a2321	Easysmx	\N	\N	2025-10-01 04:48:21.694849+05	\N
+Easysmx x05	pa11	Easysmx	\N	\N	2025-10-02 22:04:14.284129+05	\N
+easysmx	pa111	Easysmx	\N	\N	2025-10-03 01:43:23.546959+05	\N
+easysmx	pa12	Easysmx	\N	\N	2025-10-03 01:57:24.299881+05	\N
+easysmx	pg-12	Easysmx	\N	\N	2025-10-03 02:12:49.606423+05	\N
+easysmx	pg12	Easysmx	\N	\N	2025-10-04 02:53:52.88379+05	\N
 \.
 
 
@@ -2079,6 +2219,26 @@ COPY public.product_scans (id, serial_number, username, scan_time, location, is_
 67	a243	retailer	2025-10-01 03:57:43.27091	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	\N	\N	::1
 68	a243	admin	2025-10-01 04:04:35.429081	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	\N	\N	::1
 69	a2321	supp	2025-10-01 04:49:01.652562	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	\N	\N	127.0.0.1
+70	a2321	manu	2025-10-01 15:34:06.666202	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+71	a243	manu	2025-10-01 15:34:41.135989	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+72	pa11	supp	2025-10-03 01:46:30.791243	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+73	pa11	retailer	2025-10-03 01:47:48.316825	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+74	pa12	supp	2025-10-03 01:59:24.398118	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+75	pa12	retailer	2025-10-03 02:10:38.558272	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+76	pg-12	supp	2025-10-03 02:18:37.341657	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+77	pa12	supp	2025-10-04 02:41:04.734095	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+78	pa12	supp	2025-10-04 02:52:27.038994	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+79	pg12	supp	2025-10-04 02:54:32.458024	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+80	pg12	supp	2025-10-04 02:56:26.267882	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+81	pg12	supp	2025-10-04 02:57:29.240146	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+82	pg12	supp	2025-10-04 03:07:10.218148	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+83	a123221	supp	2025-10-04 03:07:58.014533	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+84	pg12	supp	2025-10-04 03:10:03.759249	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+85	pg12	retailer	2025-10-04 03:14:09.958826	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+86	pg12	retailer	2025-10-04 03:14:52.297148	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+87	pg12	supp	2025-10-04 03:15:26.060379	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+88	pg12	retailer	2025-10-04 03:23:07.919662	\N	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
+89	pg12	supp	2025-10-04 03:49:22.360551	Chak Shahzad, Islamabad, Pakistan	t	f	\N	Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0	Local/Test Environment	Internal Network	127.0.0.1
 \.
 
 
@@ -2113,6 +2273,14 @@ COPY public.support_chats (id, username, role, message, created_at, conversation
 18	manu	manufacturer	hi	2025-09-28 02:42:49.586744+05	conv:user:manu
 19	manu	manufacturer	wa	2025-09-28 02:43:22.066371+05	conv:user:manu
 20	admin	admin	heloo there	2025-09-28 02:43:49.010183+05	conv:user:manu
+21	admin	admin	hello	2025-10-02 02:34:18.558669+05	conv:user:manu
+22	admin	admin	hi	2025-10-02 02:34:35.925737+05	conv:user:manu
+23	supp	supplier	HI	2025-10-02 02:37:01.480453+05	conv:user:supp
+24	admin	admin	welcome	2025-10-02 02:37:18.236489+05	conv:user:supp
+25	admin	admin	what can i do for you	2025-10-02 02:37:33.943447+05	conv:user:supp
+26	supp	supplier	nothing tnx	2025-10-02 02:37:46.853963+05	conv:user:supp
+27	admin	admin	hi	2025-10-02 03:28:15.363793+05	conv:user:supp
+28	supp	supplier	welcome	2025-10-02 03:28:56.446454+05	conv:user:supp
 \.
 
 
@@ -2122,7 +2290,7 @@ COPY public.support_chats (id, username, role, message, created_at, conversation
 -- Name: activity_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.activity_log_id_seq', 180, true);
+SELECT pg_catalog.setval('public.activity_log_id_seq', 209, true);
 
 
 --
@@ -2131,7 +2299,7 @@ SELECT pg_catalog.setval('public.activity_log_id_seq', 180, true);
 -- Name: auth_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.auth_id_seq', 7, true);
+SELECT pg_catalog.setval('public.auth_id_seq', 8, true);
 
 
 --
@@ -2140,7 +2308,7 @@ SELECT pg_catalog.setval('public.auth_id_seq', 7, true);
 -- Name: chain_events_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.chain_events_id_seq', 47, true);
+SELECT pg_catalog.setval('public.chain_events_id_seq', 77, true);
 
 
 --
@@ -2149,7 +2317,7 @@ SELECT pg_catalog.setval('public.chain_events_id_seq', 47, true);
 -- Name: consumer_ownership_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.consumer_ownership_id_seq', 2, true);
+SELECT pg_catalog.setval('public.consumer_ownership_id_seq', 5, true);
 
 
 --
@@ -2176,7 +2344,7 @@ SELECT pg_catalog.setval('public.inventory_moves_id_seq', 1, false);
 -- Name: login_attempts_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.login_attempts_id_seq', 1000, true);
+SELECT pg_catalog.setval('public.login_attempts_id_seq', 1070, true);
 
 
 --
@@ -2185,7 +2353,7 @@ SELECT pg_catalog.setval('public.login_attempts_id_seq', 1000, true);
 -- Name: notification_log_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.notification_log_id_seq', 66, true);
+SELECT pg_catalog.setval('public.notification_log_id_seq', 76, true);
 
 
 --
@@ -2203,7 +2371,7 @@ SELECT pg_catalog.setval('public.password_reset_tokens_id_seq', 5, true);
 -- Name: product_scans_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.product_scans_id_seq', 69, true);
+SELECT pg_catalog.setval('public.product_scans_id_seq', 89, true);
 
 
 --
@@ -2221,7 +2389,7 @@ SELECT pg_catalog.setval('public.profile_id_seq', 6, true);
 -- Name: support_chats_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.support_chats_id_seq', 20, true);
+SELECT pg_catalog.setval('public.support_chats_id_seq', 28, true);
 
 
 --
@@ -2306,7 +2474,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- TOC entry 4884 (class 2606 OID 33093)
+-- TOC entry 4884 (class 2606 OID 33125)
 -- Name: password_reset_tokens password_reset_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -2543,7 +2711,7 @@ CREATE UNIQUE INDEX uq_chain_events_tx_log ON public.chain_events USING btree (t
 
 
 --
--- TOC entry 4885 (class 1259 OID 33094)
+-- TOC entry 4885 (class 1259 OID 33126)
 -- Name: uq_password_reset_tokens_token; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -2576,7 +2744,7 @@ ALTER TABLE ONLY public.inventory
     ADD CONSTRAINT inventory_serial_number_fkey FOREIGN KEY (serial_number) REFERENCES public.product(serialnumber) ON DELETE CASCADE;
 
 
--- Completed on 2025-10-01 04:52:15
+-- Completed on 2025-10-04 03:58:54
 
 --
 -- PostgreSQL database dump complete

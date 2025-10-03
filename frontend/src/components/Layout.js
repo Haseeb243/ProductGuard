@@ -12,7 +12,8 @@ const Layout = () => {
         <Outlet />
       </div>
       {/* Show customer support for authenticated users (supports auth.user or auth.username) */}
-      {(auth?.username || auth?.user) && auth?.role !== "manufacturer" && (
+      {(auth?.username || auth?.user) &&
+        !["manufacturer", "supplier"].includes(auth?.role) && (
         <CustomerSupport user={auth} />
       )}
     </main>

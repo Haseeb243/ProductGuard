@@ -1,292 +1,397 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import abi from "../../utils/Identeefi.json";
-import useAuth from "../../hooks/useAuth";
 import { ethers } from "ethers";
-import axios from "axios";
 import dayjs from "dayjs";
-import bgImg from "../../img/bg.png";
+import { toast } from "react-hot-toast";
+import AdminShell from "../admin/AdminShell";
+import {
+  GlassCard,
+  GradientBorderCard,
+  SectionHeader,
+  Divider,
+  glassButtonClass,
+} from "../admin/ui";
+import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
 import { useConfig } from "../../context/ConfigContext";
+import abi from "../../utils/Identeefi.json";
+import { findMetaMaskAccount, truncateAddress } from "../../utils/wallet";
 
-const getEthereumObject = () => window.ethereum;
-
-/*
- * This function returns the first linked account found.
- * If there is no account linked, it will return null.
- */
-const findMetaMaskAccount = async () => {
-  try {
-    const ethereum = getEthereumObject();
-
-    /*
-     * First make sure we have access to the Ethereum object.
-     */
-    if (!ethereum) {
-      console.error("Make sure you have Metamask!");
-      return null;
-    }
-
-    console.log("We have the Ethereum object", ethereum);
-    const accounts = await ethereum.request({ method: "eth_accounts" });
-
-    if (accounts.length !== 0) {
-      const account = accounts[0];
-      console.log("Found an authorized account:", account);
-      return account;
-    } else {
-      console.error("No authorized account found");
-      return null;
-    }
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
-};
+const CONTRACT_ABI = abi.abi;
 
 const UpdateProduct = () => {
-  const [currentAccount, setCurrentAccount] = useState("");
-  const [suppDate, setSuppDate] = useState("");
-  const [suppLatitude, setSuppLatitude] = useState("");
-  const [suppLongtitude, setSuppLongtitude] = useState("");
-  const [suppName, setSuppName] = useState("");
-  const [suppLocation, setSuppLocation] = useState("");
-  const [loading, setLoading] = useState("");
-  const [serialNumber, setSerialNumber] = useState("");
-  const [productData, setProductData] = useState("");
-
-  const [name, setName] = useState("P");
-  const [brand, setBrand] = useState("");
-  const [description, setDescription] = useState("");
-  const [imageName, setImageName] = useState("");
-  const [history, setHistory] = useState([]);
-  const [isSold, setIsSold] = useState(false);
-  const [loadError, setLoadError] = useState("");
-
-  const [image, setImage] = useState({
-    file: [],
-    filepreview: null,
-  });
+  const {
+    sidebarLinks,
+    isSupplier,
+    walletAddress,
+    connectWallet,
+    checkingWallet,
+  } = useSupplierWorkspace();
 
   const { apiBaseUrl, contractAddress, publicRpcUrl } = useConfig();
-  const CONTRACT_ADDRESS = contractAddress;
-  const CONTRACT_ABI = abi.abi;
-
-  const { auth } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const qrData = location.state?.qrData;
+  const qrData = location.state?.qrData || "";
   const flaggedSuspicious = Boolean(location.state?.isSuspicious);
 
-  console.log("qrData", qrData);
+  const [currentAccount, setCurrentAccount] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [productDetails, setProductDetails] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [imageUrl, setImageUrl] = useState(null);
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [isSold, setIsSold] = useState(false);
 
   useEffect(() => {
-    console.log("useEffect 1");
-
     findMetaMaskAccount().then((account) => {
       if (account) {
         setCurrentAccount(account);
       }
     });
+  }, []);
 
-    if (qrData) {
-      handleScan(qrData);
-    }
-  }, [qrData]);
+  const loadProductImage = useCallback(
+    (fileName) => {
+      if (!fileName) {
+        setImageUrl(null);
+        return;
+      }
+      setImageUrl(`${apiBaseUrl}/file/product/${fileName}`);
+    },
+    [apiBaseUrl]
+  );
 
-  const getImage = async (imageName) => {
-    setImage((prevState) => ({
-      ...prevState,
-      filepreview: `${apiBaseUrl}/file/product/${imageName}`,
-    }));
-  };
-
-  const handleScan = async (qrData) => {
-    const parts = qrData.split(",");
-    const scannedContract = parts[0];
-    const scannedSerial = parts[1];
-    setSerialNumber(scannedSerial);
-
-    if (!CONTRACT_ADDRESS) {
-      setLoadError("Contract address is not configured.");
-      return;
-    }
-
-    if (scannedContract !== CONTRACT_ADDRESS) {
-      setLoadError("Scanned QR does not match the configured contract.");
-      return;
-    }
-
-    try {
-      const { ethereum } = window;
-      let provider;
-
-      if (ethereum) {
-        provider = new ethers.providers.Web3Provider(ethereum);
-      } else {
-        provider = new ethers.providers.JsonRpcProvider(publicRpcUrl);
+  const parseProductData = useCallback(
+    (raw) => {
+      if (!raw) {
+        setLoadError("No product data returned from the blockchain.");
+        return;
       }
 
-      const productContract = new ethers.Contract(
-        CONTRACT_ADDRESS,
-        CONTRACT_ABI,
-        provider
-      );
+      const arr = raw.split(",");
+      const details = {
+        name: arr[1] || "Unknown product",
+        brand: arr[2] || "Unknown brand",
+        description: (arr[3] || "").replace(/;/g, ","),
+        imageKey: arr[4] || "",
+      };
 
-      const product = await productContract.getProduct(
-        scannedSerial.toString()
-      );
+      const timeline = [];
+      for (let start = 5; start + 4 < arr.length; start += 5) {
+        const actor = arr[start + 1] || "";
+        const location = (arr[start + 2] || "").replace(/;/g, ",");
+        const timestamp = Number(arr[start + 3] || 0);
+        const soldFlag = arr[start + 4] === "true";
+        timeline.push({
+          actor,
+          location,
+          timestamp,
+          isSold: soldFlag,
+        });
+      }
+
+      const sold = timeline.some((entry) => entry.isSold);
+      setProductDetails(details);
+      setHistory(timeline);
+      setIsSold(sold);
       setLoadError("");
-      setData(product.toString());
-    } catch (error) {
-      console.log(error);
-      setLoadError("Unable to load product details from the blockchain.");
+      loadProductImage(details.imageKey);
+    },
+    [loadProductImage]
+  );
+
+  const loadProductFromChain = useCallback(
+    async (data) => {
+      const parts = data.split(",");
+      if (parts.length < 2) {
+        setLoadError("QR code is missing expected fields.");
+        return;
+      }
+
+      const scannedContract = (parts[0] || "").trim();
+      const scannedSerial = (parts[1] || "").trim();
+
+      if (!scannedSerial) {
+        setLoadError("Serial number missing from QR code.");
+        return;
+      }
+
+      setSerialNumber(scannedSerial);
+
+      if (!contractAddress) {
+        setLoadError("Contract address is not configured.");
+        return;
+      }
+
+      if (scannedContract !== contractAddress) {
+        setLoadError(
+          "Scanned QR belongs to a different contract. Please rescan the correct product."
+        );
+        toast.error("QR code does not match the configured contract.");
+        return;
+      }
+
+      try {
+        setLoadingMessage("Fetching product from Identeefi contract…");
+        const provider = window.ethereum
+          ? new ethers.providers.Web3Provider(window.ethereum)
+          : new ethers.providers.JsonRpcProvider(publicRpcUrl);
+
+        const contract = new ethers.Contract(
+          contractAddress,
+          CONTRACT_ABI,
+          provider
+        );
+
+        const response = await contract.getProduct(scannedSerial);
+        setLoadingMessage("");
+        parseProductData(response.toString());
+      } catch (error) {
+        console.error("Failed to load product from contract", error);
+        setLoadingMessage("");
+        setLoadError("Unable to retrieve product data from the blockchain.");
+        toast.error("Blockchain lookup failed. Try again or rescan.");
+      }
+    },
+    [contractAddress, parseProductData, publicRpcUrl]
+  );
+
+  useEffect(() => {
+    if (qrData) {
+      loadProductFromChain(qrData);
     }
-  };
+  }, [qrData, loadProductFromChain]);
 
-  const setData = (d) => {
-    console.log("product data: ", d);
+  const metaSummary = useMemo(() => {
+    return [
+      {
+        label: "Serial",
+        value: serialNumber || "—",
+        key: "serial",
+      },
+      {
+        label: "Wallet",
+        value: walletAddress
+          ? truncateAddress(walletAddress)
+          : "Not connected",
+        key: "wallet",
+      },
+      {
+        label: "Suspicious",
+        value: flaggedSuspicious ? "Yes" : "No",
+        key: "suspicious",
+      },
+      {
+        label: "Status",
+        value: productDetails
+          ? isSold
+            ? "Marked sold"
+            : "In circulation"
+          : "Awaiting scan",
+        key: "status",
+      },
+    ];
+  }, [serialNumber, walletAddress, flaggedSuspicious, productDetails, isSold]);
 
-    const arr = d.split(",");
-    console.log("arr", arr);
-
-    setName(arr[1]);
-    setBrand(arr[2]);
-    setDescription(arr[3].replace(/;/g, ","));
-    // setImageName(arr[4]);
-    getImage(arr[4]);
-
-    const hist = [];
-    let start = 5;
-
-    for (let i = 5; i < arr.length; i += 5) {
-      const actor = arr[start + 1];
-      const location = arr[start + 2].replace(/;/g, ",");
-      const timestamp = arr[start + 3];
-      const isSold = arr[start + 4] === "true" ? setIsSold(true) : false;
-
-      hist.push({
-        actor,
-        location,
-        timestamp,
-        isSold,
-      });
-
-      start += 5;
-    }
-    console.log("hist", hist);
-    setHistory(hist);
-  };
-
-  const handleBack = () => {
-    navigate(-1);
-  };
-
-  const getHistory = () => {
-    return history.map((item, index) => {
-      const date = dayjs(item.timestamp * 1000).format("MM/DD/YYYY");
-      const time = dayjs(item.timestamp * 1000).format("HH:mm a");
-
-      // if (item.isSold) {
-      //     setIsSold(true);
-      // }
-
-      return (
-        <div key={index} className="flex items-center mb-4">
-          <div className="flex flex-col items-center mr-4">
-            <div className="w-4 h-4 rounded-full bg-blue-500 mb-1"></div>
-            {index < history.length - 1 && (
-              <div className="w-1 h-8 bg-blue-200"></div>
-            )}
-          </div>
-          <div className="bg-white/20 backdrop-blur-md rounded-lg px-4 py-2 shadow text-white w-full">
-            <div className="text-xs text-blue-200 mb-1">
-              {time} {date}
-            </div>
-            <div className="font-semibold">Location: {item.location}</div>
-            <div className="text-sm">Actor: {item.actor}</div>
-          </div>
-        </div>
-      );
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
+  const handleContinue = () => {
+    if (!productDetails || !qrData) return;
     navigate("/update-product-details", {
       state: { qrData, isSuspicious: flaggedSuspicious },
     });
   };
 
-  return (
-    <div
-      className="min-h-screen w-full bg-cover bg-center bg-no-repeat relative overflow-y-auto flex items-center justify-center"
-      style={{
-        backgroundImage: `linear-gradient(rgba(10,10,20,0.85),rgba(10,10,20,0.95)), url(${bgImg})`,
-      }}
-    >
-      <div className="max-w-lg w-full mx-auto bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl shadow-2xl p-8 mt-12 mb-12">
-        <h1 className="text-3xl font-bold text-white text-center mb-8 font-gambetta">
-          Product Details
-        </h1>
-        <div className="flex flex-row items-center mb-8">
-          <div className="flex flex-col items-center flex-shrink-0 mr-6">
-            <img
-              src={image.filepreview}
-              alt={name}
-              className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg mb-2 bg-blue-200"
-            />
-          </div>
-          <div className="flex flex-col flex-grow text-white">
-            <div className="text-xl font-semibold mb-2">{name}</div>
-            <div className="text-sm mb-1">
-              Serial Number: <span className="font-mono">{serialNumber}</span>
-            </div>
-            <div className="text-sm mb-1">Description: {description}</div>
-            <div className="text-sm mb-1">Brand: {brand}</div>
-          </div>
-        </div>
-        <div className="mb-8">
-          <div className="text-white font-semibold mb-2">Product History</div>
-          <div>{getHistory()}</div>
-          <div className="flex items-center mt-4">
-            <div className="flex flex-col items-center mr-4">
-              <div className="w-4 h-4 rounded-full bg-green-400 mb-1"></div>
-            </div>
-            <div className="bg-white/20 backdrop-blur-md rounded-lg px-4 py-2 shadow text-white w-full">
-              <div className="text-xs text-green-200 mb-1">
-                {dayjs().format("HH:mm a")} {dayjs().format("MM/DD/YYYY")}
-              </div>
-              <div className="font-semibold">IsSold: {isSold.toString()}</div>
-            </div>
-          </div>
-        </div>
-        {loading && (
-          <div className="text-center text-white/80 text-sm mb-4">
-            {loading}
-          </div>
-        )}
-        {loadError && (
-          <div className="text-center text-red-200 text-sm mb-4">
-            {loadError}
-          </div>
-        )}
-        <button
-          type="submit"
-          onClick={handleSubmit}
-          className="w-full px-4 py-3 rounded-lg bg-white text-gray-800 font-semibold hover:bg-gray-100 transition duration-200 mb-4"
-        >
-          Update Product
-        </button>
-        <button
-          type="button"
-          onClick={handleBack}
-          className="w-full px-4 py-3 rounded-lg bg-transparent border border-white text-white hover:bg-white/10 transition duration-200"
-        >
-          Back
-        </button>
-      </div>
+  const headerActions = (
+    <div className="flex flex-wrap gap-3">
+      <button
+        type="button"
+        onClick={() => navigate("/supplier/scanner")}
+        className={glassButtonClass}
+      >
+        Rescan product
+      </button>
+      <button
+        type="button"
+        onClick={connectWallet}
+        className={`${glassButtonClass} ${
+          checkingWallet ? "cursor-wait opacity-70" : ""
+        }`}
+        disabled={checkingWallet}
+      >
+        {checkingWallet
+          ? "Connecting…"
+          : walletAddress
+          ? "Switch wallet"
+          : "Connect wallet"}
+      </button>
+      <button
+        type="button"
+        onClick={handleContinue}
+        disabled={!productDetails || !qrData}
+        className={`${glassButtonClass} ${
+          !productDetails || !qrData ? "cursor-not-allowed opacity-60" : ""
+        }`}
+      >
+        Continue to update
+      </button>
     </div>
+  );
+
+  return (
+    <AdminShell
+      title="Review product before updating"
+      subtitle="Confirm on-chain details, check custody trail, and proceed to the update workflow."
+      meta={metaSummary}
+      actions={headerActions}
+      forceSidebar={isSupplier}
+      sidebarLinks={sidebarLinks}
+      workspaceLabel={isSupplier ? "Supplier Hub" : undefined}
+      showHeaderNotifications={false}
+    >
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">
+        {flaggedSuspicious ? (
+          <GlassCard className="border-amber-400/40 bg-amber-500/10 p-6 text-white">
+            <SectionHeader
+              eyebrow="Attention"
+              title="Scan flagged as suspicious"
+              description="Proceed carefully. Double-check custody data before making changes."
+            />
+          </GlassCard>
+        ) : null}
+
+        {loadError ? (
+          <GlassCard className="border-rose-400/40 bg-rose-500/10 p-6 text-white">
+            <SectionHeader
+              eyebrow="Error"
+              title="We couldn't load this product"
+              description={loadError}
+            />
+          </GlassCard>
+        ) : null}
+
+        <GradientBorderCard>
+          <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <div className="relative h-48 w-48 overflow-hidden rounded-3xl border border-white/15 bg-white/5">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={productDetails?.name || "Product"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-white/50">
+                    No image
+                  </div>
+                )}
+              </div>
+              <div className="text-center text-sm text-white/60">
+                Serial number: {" "}
+                <span className="font-semibold text-white">
+                  {serialNumber || "—"}
+                </span>
+              </div>
+              <div className="text-xs text-white/40">
+                Wallet in MetaMask: {" "}
+                <span className="font-semibold text-white">
+                  {currentAccount ? truncateAddress(currentAccount) : "—"}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-5 text-white/80">
+              <SectionHeader
+                eyebrow="On-chain record"
+                title={productDetails?.name || "Unknown product"}
+                description="Details pulled directly from the Identeefi smart contract."
+              />
+              <div className="grid gap-4 text-sm text-white/70 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-white/45">
+                    Brand
+                  </p>
+                  <p className="mt-1 text-base text-white">
+                    {productDetails?.brand || "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-white/45">
+                    Status
+                  </p>
+                  <p
+                    className={`mt-1 text-base ${
+                      isSold ? "text-emerald-200" : "text-white"
+                    }`}
+                  >
+                    {isSold ? "Marked sold" : "In circulation"}
+                  </p>
+                </div>
+                <div className="sm:col-span-2">
+                  <p className="text-xs uppercase tracking-[0.35em] text-white/45">
+                    Description
+                  </p>
+                  <p className="mt-1 text-base text-white">
+                    {productDetails?.description || "No description provided."}
+                  </p>
+                </div>
+              </div>
+              {loadingMessage ? (
+                <div className="text-sm text-white/60">{loadingMessage}</div>
+              ) : null}
+            </div>
+          </div>
+        </GradientBorderCard>
+
+        <GlassCard className="p-6 space-y-5">
+          <SectionHeader
+            eyebrow="Custody trail"
+            title="Product history"
+            description="Each handoff captured from the smart contract. Review before making changes."
+          />
+          <Divider />
+          {history.length ? (
+            <div className="space-y-4">
+              {history.map((entry, index) => {
+                const timestamp = entry.timestamp
+                  ? dayjs(Number(entry.timestamp) * 1000)
+                  : null;
+                return (
+                  <div
+                    key={`${entry.actor}-${entry.timestamp}-${index}`}
+                    className="rounded-2xl border border-white/12 bg-white/5 p-4 text-sm text-white/80"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-white">
+                        {entry.actor || "Unknown actor"}
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs uppercase tracking-[0.3em] ${
+                          entry.isSold
+                            ? "border-emerald-300/40 bg-emerald-500/15 text-emerald-200"
+                            : "border-white/20 bg-white/10 text-white/70"
+                        }`}
+                      >
+                        {entry.isSold ? "Sold" : "Handled"}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-white/60">
+                      {entry.location || "Location not provided"}
+                    </div>
+                    <div className="mt-1 text-xs text-white/50">
+                      {timestamp
+                        ? timestamp.format("MMM D, YYYY h:mm A")
+                        : "Timestamp unavailable"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-white/60">
+              No history entries found for this product yet.
+            </p>
+          )}
+        </GlassCard>
+      </div>
+    </AdminShell>
   );
 };
 

@@ -6,6 +6,7 @@ import { useConfig } from "../../context/ConfigContext";
 import AdminShell from "../admin/AdminShell";
 import { GlassCard, glassButtonClass, SectionHeader } from "../admin/ui";
 import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
+import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
 
 const STATUS_STYLES = {
   ok: {
@@ -38,7 +39,9 @@ const formatDate = (value) => {
 
 const TransparencyDashboard = () => {
   const { apiBaseUrl, fileEndpoint } = useConfig();
-  const { isManufacturer, sidebarLinks } = useManufacturerWorkspace();
+  const { isManufacturer, sidebarLinks: manufacturerSidebar } =
+    useManufacturerWorkspace();
+  const { isSupplier, sidebarLinks: supplierSidebar } = useSupplierWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -310,6 +313,18 @@ const TransparencyDashboard = () => {
     </GlassCard>
   );
 
+  const forceSidebar = isManufacturer || isSupplier;
+  const activeSidebar = isManufacturer
+    ? manufacturerSidebar
+    : isSupplier
+    ? supplierSidebar
+    : null;
+  const workspaceLabel = isManufacturer
+    ? "Manufacturer Workspace"
+    : isSupplier
+    ? "Supplier Hub"
+    : undefined;
+
   return (
     <AdminShell
       title="Transparency Intelligence"
@@ -317,11 +332,11 @@ const TransparencyDashboard = () => {
       meta={metaSummary}
       actions={headerActions}
       toolbar={toolbar}
-      forceSidebar={isManufacturer}
-      sidebarLinks={sidebarLinks}
-      workspaceLabel={isManufacturer ? "Manufacturer Workspace" : undefined}
-      showHeaderProfile={isManufacturer ? false : undefined}
-      showHeaderNotifications={isManufacturer ? false : undefined}
+      forceSidebar={forceSidebar}
+      sidebarLinks={activeSidebar}
+      workspaceLabel={workspaceLabel}
+      showHeaderProfile={forceSidebar ? false : undefined}
+      showHeaderNotifications={forceSidebar ? false : undefined}
     >
       <div className="mx-auto flex w-full max-w-[1450px] flex-col gap-10">
         {error ? (

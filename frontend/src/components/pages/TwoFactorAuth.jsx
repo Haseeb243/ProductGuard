@@ -13,6 +13,7 @@ import {
   SectionHeader,
 } from "../admin/ui";
 import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
+import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
 
 const deriveOtpAuthUrl = (secret, username) => {
   if (!secret || !username) return null;
@@ -29,7 +30,9 @@ const formatTimestamp = (value) =>
 
 const TwoFactorAuth = () => {
   const { auth, setAuth } = useAuth();
-  const { isManufacturer, sidebarLinks } = useManufacturerWorkspace();
+  const { isManufacturer, sidebarLinks: manufacturerSidebar } =
+    useManufacturerWorkspace();
+  const { isSupplier, sidebarLinks: supplierSidebar } = useSupplierWorkspace();
   const navigate = useNavigate();
 
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
@@ -204,6 +207,18 @@ const TwoFactorAuth = () => {
     return <Navigate to="/login" replace />;
   }
 
+  const forceSidebar = isManufacturer || isSupplier;
+  const activeSidebar = isManufacturer
+    ? manufacturerSidebar
+    : isSupplier
+    ? supplierSidebar
+    : null;
+  const workspaceLabel = isManufacturer
+    ? "Manufacturer Workspace"
+    : isSupplier
+    ? "Supplier Hub"
+    : undefined;
+
   return (
     <AdminShell
       title="Two-Factor Authentication"
@@ -232,11 +247,11 @@ const TwoFactorAuth = () => {
           </button>
         </div>
       }
-      forceSidebar={isManufacturer}
-      sidebarLinks={sidebarLinks}
-      workspaceLabel={isManufacturer ? "Manufacturer Workspace" : undefined}
-      showHeaderNotifications={isManufacturer ? false : undefined}
-      showHeaderProfile={isManufacturer ? false : undefined}
+      forceSidebar={forceSidebar}
+      sidebarLinks={activeSidebar}
+      workspaceLabel={workspaceLabel}
+      showHeaderNotifications={forceSidebar ? false : undefined}
+      showHeaderProfile={forceSidebar ? false : undefined}
     >
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8">
         <GlassCard className="p-6">

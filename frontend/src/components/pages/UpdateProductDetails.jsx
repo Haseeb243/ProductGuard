@@ -1,357 +1,532 @@
-import { useEffect, useState } from "react";
-import useAuth from "../../hooks/useAuth";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
-import axios from "axios";
+import axios from "../../api/axios";
 import Geocode from "react-geocode";
 import dayjs from "dayjs";
-import { useLocation, useNavigate } from "react-router-dom";
-import abi from "../../utils/Identeefi.json";
-import bgImg from "../../img/bg.png";
+import { toast } from "react-hot-toast";
+import AdminShell from "../admin/AdminShell";
+import { GlassCard, SectionHeader, Divider, glassButtonClass } from "../admin/ui";
+import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
 import { useConfig } from "../../context/ConfigContext";
+import abi from "../../utils/Identeefi.json";
 import { buildDescriptiveLocation } from "../../utils/location";
+import { findMetaMaskAccount, truncateAddress } from "../../utils/wallet";
 
-const options = ["true", "false"];
+const options = ["false", "true"];
 
-const getEthereumObject = () => window.ethereum;
-
-const findMetaMaskAccount = async () => {
-  try {
-    const ethereum = getEthereumObject();
-    if (!ethereum) {
-      console.error("Make sure you have Metamask!");
-      return null;
-    }
-    const accounts = await ethereum.request({ method: "eth_accounts" });
-    if (accounts.length !== 0) {
-      return accounts[0];
-    } else {
-      return null;
-    }
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
-};
+const CONTRACT_ABI = abi.abi;
 
 const UpdateProductDetails = () => {
-  const [currentAccount, setCurrentAccount] = useState("");
-  const [currDate, setCurrDate] = useState("");
-  const [currLatitude, setCurrLatitude] = useState("");
-  const [currLongtitude, setCurrLongtitude] = useState("");
-  const [currName, setCurrName] = useState("");
-  const [currLocation, setCurrLocation] = useState("");
-  const [serialNumber, setSerialNumber] = useState("");
-  const [isSold, setIsSold] = useState(false);
-  const [loading, setLoading] = useState("");
-  const [buyerName, setBuyerName] = useState("");
-  const [buyerIdentifier, setBuyerIdentifier] = useState("");
-  const [formError, setFormError] = useState("");
+  const {
+    auth,
+    sidebarLinks,
+    isSupplier,
+    walletAddress,
+    connectWallet,
+    checkingWallet,
+  } = useSupplierWorkspace();
 
-  const { apiBaseUrl, contractAddress, googleMapsApiKey } = useConfig();
-  const CONTRACT_ADDRESS = contractAddress;
-  const CONTRACT_ABI = abi.abi;
-
-  const { auth } = useAuth();
+  const { contractAddress, googleMapsApiKey } = useConfig();
   const navigate = useNavigate();
   const location = useLocation();
-  const qrData = location.state?.qrData;
+  const qrData = location.state?.qrData || "";
   const flaggedSuspicious = Boolean(location.state?.isSuspicious);
+
+  const [currentAccount, setCurrentAccount] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [timestampUnix, setTimestampUnix] = useState(null);
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
+  const [resolvedLocation, setResolvedLocation] = useState("");
+  const [locationSource, setLocationSource] = useState("pending");
+  const [geoError, setGeoError] = useState("");
+  const [operatorName, setOperatorName] = useState("");
+  const [isSold, setIsSold] = useState(false);
+  useEffect(() => {
+    if (isSupplier) {
+      setIsSold(false);
+    }
+  }, [isSupplier]);
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerIdentifier, setBuyerIdentifier] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [lastSuccessAt, setLastSuccessAt] = useState(null);
 
   useEffect(() => {
     if (!qrData) return;
-    const data = qrData.split(",");
-    setSerialNumber(data[1]);
+    const parts = qrData.split(",");
+    if (parts.length > 1) {
+      setSerialNumber(parts[1]);
+    }
     findMetaMaskAccount().then((account) => {
-      if (account !== null) {
+      if (account) {
         setCurrentAccount(account);
       }
     });
   }, [qrData]);
 
-  useEffect(() => {
-    getUsername();
-    getCurrentTimeLocation();
-  }, []);
+  const fetchOperatorProfile = useCallback(async () => {
+    try {
+      if (!auth?.user) return;
+      const response = await axios.get(`/profile/${auth.user}`);
+      const row = Array.isArray(response?.data)
+        ? response.data[0]
+        : response?.data?.data?.[0];
+      if (row?.name) {
+        setOperatorName(row.name);
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile for update:", error);
+    }
+  }, [auth?.user]);
 
-  useEffect(() => {
-    const doReverse = async () => {
-      if (!currLatitude || !currLongtitude) return;
+  const resolveLocation = useCallback(
+    async (lat, lon) => {
       if (googleMapsApiKey) {
         try {
           Geocode.setApiKey(googleMapsApiKey);
-          const response = await Geocode.fromLatLng(
-            currLatitude,
-            currLongtitude
-          );
+          const response = await Geocode.fromLatLng(lat, lon);
           const address = response.results?.[0]?.formatted_address;
           if (address) {
-            setCurrLocation(address.replace(/,/g, ";"));
+            setResolvedLocation(address);
+            setLocationSource("google");
             return;
           }
-        } catch (e) {
-          console.warn("Google reverse geocoding failed, trying 3rd-party:", e);
+        } catch (error) {
+          console.warn("Google reverse geocoding failed:", error);
         }
       }
       try {
         const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(
-          currLatitude
-        )}&longitude=${encodeURIComponent(currLongtitude)}&localityLanguage=en`;
+          lat
+        )}&longitude=${encodeURIComponent(lon)}&localityLanguage=en`;
         const resp = await fetch(url);
         if (resp.ok) {
           const data = await resp.json();
           const descriptive = buildDescriptiveLocation(data);
           if (descriptive) {
-            setCurrLocation(descriptive.replace(/,/g, ";"));
+            setResolvedLocation(descriptive);
+            setLocationSource("bigdatacloud");
             return;
           }
         }
-      } catch (e) {
-        console.warn("BigDataCloud reverse geocoding failed:", e);
+      } catch (error) {
+        console.warn("BigDataCloud reverse geocoding failed:", error);
       }
-      setCurrLocation(`lat:${currLatitude};lon:${currLongtitude}`);
-    };
-    doReverse();
-  }, [currLatitude, currLongtitude, googleMapsApiKey]);
+      setResolvedLocation(`lat:${lat};lon:${lon}`);
+      setLocationSource("coordinates");
+    },
+    [googleMapsApiKey]
+  );
 
-  const getCurrentTimeLocation = async () => {
-    setCurrDate(dayjs().unix());
-    try {
-      if (navigator.permissions && navigator.permissions.query) {
-        try {
-          const status = await navigator.permissions.query({
-            name: "geolocation",
-          });
-          if (status.state === "denied") {
-            alert(
-              "Location access is blocked. Please enable location permissions for this site and try again."
-            );
-          }
-        } catch {}
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setCurrLatitude(position.coords.latitude);
-          setCurrLongtitude(position.coords.longitude);
-        },
-        (error) => {
-          console.warn("Geolocation error:", error?.message || error);
-          alert(
-            "Unable to access device location. Please enable location services and permissions, then try again."
-          );
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    } catch (e) {
-      console.warn("getCurrentTimeLocation failed:", e);
+  const captureLocationAndTime = useCallback(() => {
+    setTimestampUnix(dayjs().unix());
+    setGeoError("");
+    if (!navigator.geolocation) {
+      setGeoError("Geolocation is not supported by this browser.");
+      return;
     }
-  };
-
-  const getUsername = async () => {
-    try {
-      const res = await axios.get(`${apiBaseUrl}/profile/${auth.user}`);
-      const row = Array.isArray(res?.data) ? res.data[0] : res?.data?.data?.[0];
-      if (row?.name) setCurrName(row.name);
-    } catch (e) {
-      console.error("Failed to fetch profile for update:", e);
-    }
-  };
-
-  const updateProduct = async (e) => {
-    e.preventDefault();
-    try {
-      const { ethereum } = window;
-      if (ethereum) {
-        const provider = new ethers.providers.Web3Provider(ethereum);
-        const signer = provider.getSigner();
-        const productContract = new ethers.Contract(
-          CONTRACT_ADDRESS,
-          CONTRACT_ABI,
-          signer
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude: lat, longitude: lon } = position.coords;
+        setLatitude(lat);
+        setLongitude(lon);
+        setLocationSource("gps");
+        resolveLocation(lat, lon);
+      },
+      (error) => {
+        console.warn("Geolocation error:", error?.message || error);
+        setGeoError(
+          error?.message ||
+            "Unable to access device location. Enable permissions and retry."
         );
-        const registerTxn = await productContract.addProductHistory(
-          serialNumber,
-          currName,
-          currLocation,
-          currDate.toString(),
-          Boolean(isSold)
-        );
-        setLoading("Mining (Add Product History) ...", registerTxn.hash);
-        await registerTxn.wait();
-        setLoading("Done! Product details updated successfully!");
-      } else {
-        console.log("Ethereum object doesn't exist!");
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(
-      "Please pay the transaction fee to update the product details..."
+        setLocationSource("denied");
+        toast.error("Location access denied. Enter updates manually if needed.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    // If marking sold, validate buyer info before transacting
-    if (isSold) {
-      if (!buyerName?.trim() || !buyerIdentifier?.trim()) {
-        setFormError(
-          "Please provide the consumer's full name and an identifier before submitting."
-        );
-        setLoading("");
-        return;
-      }
+  }, [resolveLocation]);
+
+  useEffect(() => {
+    fetchOperatorProfile();
+    captureLocationAndTime();
+  }, [fetchOperatorProfile, captureLocationAndTime]);
+
+  const locationDisplay = useMemo(() => {
+    if (resolvedLocation) {
+      return resolvedLocation.replace(/;/g, ", ");
     }
-    await updateProduct(e);
-    if (isSold) {
-      try {
-        await axios.post(`${apiBaseUrl}/ownership/transfer`, {
-          serialNumber,
-          ownerName: buyerName.trim(),
-          ownerIdentifier: buyerIdentifier.trim(),
-          actor: auth?.username || auth?.user || "retailer",
-        });
-      } catch (e) {
-        console.error("Failed to record consumer ownership:", e);
+    if (geoError) {
+      return geoError;
+    }
+    if (latitude && longitude) {
+      return `lat:${latitude.toFixed(4)}, lon:${longitude.toFixed(4)}`;
+    }
+    return "Capturing location…";
+  }, [resolvedLocation, geoError, latitude, longitude]);
+
+  const metaSummary = useMemo(() => {
+    return [
+      {
+        label: "Serial",
+        value: serialNumber || "—",
+        key: "serial",
+      },
+      {
+        label: "Wallet",
+        value: walletAddress
+          ? truncateAddress(walletAddress)
+          : "Not connected",
+        key: "wallet",
+      },
+      {
+        label: "Timestamp",
+        value: timestampUnix
+          ? dayjs(timestampUnix * 1000).format("MMM D, YYYY h:mm A")
+          : "—",
+        key: "timestamp",
+      },
+      {
+        label: "Location",
+        value: locationDisplay,
+        key: "location",
+      },
+    ];
+  }, [serialNumber, walletAddress, timestampUnix, locationDisplay]);
+
+  const updateProductOnChain = useCallback(async () => {
+    if (!contractAddress) {
+      throw new Error("Contract address is not configured.");
+    }
+    if (!window.ethereum) {
+      throw new Error("MetaMask is required to submit updates.");
+    }
+
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const signer = provider.getSigner();
+    const productContract = new ethers.Contract(
+      contractAddress,
+      CONTRACT_ABI,
+      signer
+    );
+
+    const locationValue = resolvedLocation
+      ? resolvedLocation.replace(/,/g, ";")
+      : latitude && longitude
+      ? `lat:${latitude};lon:${longitude}`
+      : "";
+
+    const registerTxn = await productContract.addProductHistory(
+      serialNumber,
+      operatorName || auth?.user || "supplier",
+      locationValue,
+      String(timestampUnix || dayjs().unix()),
+      Boolean(isSold)
+    );
+
+    setLoadingMessage("Mining transaction…");
+    await registerTxn.wait();
+    setLoadingMessage("On-chain history updated.");
+  }, [
+    auth?.user,
+    contractAddress,
+    isSold,
+    latitude,
+    longitude,
+    operatorName,
+    resolvedLocation,
+    serialNumber,
+    timestampUnix,
+  ]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setFormError("");
+
+    if (isSold && (!buyerName.trim() || !buyerIdentifier.trim())) {
+      setFormError(
+        "Please provide the consumer's full name and an identifier before submitting."
+      );
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setLoadingMessage("Preparing transaction…");
+
+      await updateProductOnChain();
+
+      if (isSold) {
+        try {
+          await axios.post("/ownership/transfer", {
+            serialNumber,
+            ownerName: buyerName.trim(),
+            ownerIdentifier: buyerIdentifier.trim(),
+            actor: auth?.user || "supplier",
+          });
+        } catch (error) {
+          console.error("Failed to record consumer ownership:", error);
+          toast.error("Ownership transfer recorded on-chain but failed in backend.");
+        }
       }
+
+      const successMoment = new Date();
+      setLastSuccessAt(successMoment);
+      toast.success("Product history updated successfully.");
+    } catch (error) {
+      console.error("Update product details failed", error);
+      toast.error(error?.message || "Failed to update product details.");
+    } finally {
+      setSubmitting(false);
+      setLoadingMessage("");
     }
   };
 
-  const handleBack = () => {
-    navigate(-1);
-  };
+  const headerActions = (
+    <div className="flex flex-wrap gap-3">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className={glassButtonClass}
+      >
+        Back to review
+      </button>
+      <button
+        type="button"
+        onClick={connectWallet}
+        className={`${glassButtonClass} ${
+          checkingWallet ? "cursor-wait opacity-70" : ""
+        }`}
+        disabled={checkingWallet}
+      >
+        {checkingWallet
+          ? "Connecting…"
+          : walletAddress
+          ? "Switch wallet"
+          : "Connect wallet"}
+      </button>
+    </div>
+  );
 
   return (
-    <div
-      className="min-h-screen w-full bg-cover bg-center bg-no-repeat relative overflow-y-auto flex items-center justify-center"
-      style={{
-        backgroundImage: `linear-gradient(rgba(10,10,20,0.85),rgba(10,10,20,0.95)), url(${bgImg})`,
-      }}
+    <AdminShell
+      title="Finalize product update"
+      subtitle="Anchor this custody event on-chain and optionally record the consumer transfer."
+      meta={metaSummary}
+      actions={headerActions}
+      forceSidebar={isSupplier}
+      sidebarLinks={sidebarLinks}
+      workspaceLabel={isSupplier ? "Supplier Hub" : undefined}
+      showHeaderNotifications={false}
     >
-      <div className="max-w-lg w-full mx-auto bg-gradient-to-br from-blue-400 to-indigo-500 rounded-2xl shadow-2xl p-8 mt-12 mb-12">
-        <h1 className="text-3xl font-bold text-white text-center mb-8 font-gambetta">
-          Update Product Details
-        </h1>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-white mb-1 font-semibold">
-              Serial Number
-            </label>
-            <input
-              type="text"
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
-              value={serialNumber}
-              disabled
+      <div className="mx-auto flex w-full max-w-[1050px] flex-col gap-8">
+        {lastSuccessAt ? (
+          <GlassCard className="border border-emerald-400/40 bg-emerald-500/10 p-6 text-emerald-50">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-200/80">
+                Update acknowledged
+              </p>
+              <p className="text-base font-semibold">
+                Product details were updated successfully.
+              </p>
+              <p className="text-xs text-emerald-100/80">
+                {`Logged at ${dayjs(lastSuccessAt).format("MMM D, YYYY h:mm A")}`}
+              </p>
+            </div>
+          </GlassCard>
+        ) : null}
+
+        {flaggedSuspicious ? (
+          <GlassCard className="border-amber-400/40 bg-amber-500/10 p-6 text-white">
+            <SectionHeader
+              eyebrow="Attention"
+              title="Previous scan flagged as suspicious"
+              description="Ensure the location and operator context are accurate before committing this update."
             />
-          </div>
-          <div>
-            <label className="block text-white mb-1 font-semibold">Name</label>
-            <input
-              type="text"
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
-              value={currName}
-              disabled
-            />
-          </div>
-          <div>
-            <label className="block text-white mb-1 font-semibold">
-              Location
-            </label>
-            <textarea
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
-              value={currLocation.replace(/;/g, ",")}
-              disabled
-              rows={2}
-            />
-          </div>
-          <div>
-            <label className="block text-white mb-1 font-semibold">Date</label>
-            <input
-              type="text"
-              className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
-              value={dayjs(currDate * 1000).format("MMMM D, YYYY h:mm A")}
-              disabled
-            />
-          </div>
-          {auth.role === "supplier" ? null : (
+          </GlassCard>
+        ) : null}
+
+        <GlassCard className="p-6">
+          <SectionHeader
+            eyebrow="On-chain update"
+            title="Context for this custody event"
+            description="ProductGuard logs the operator, timestamp, and location along with optional sale details."
+          />
+          <Divider className="my-6" />
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                  Serial number
+                </label>
+                <input
+                  type="text"
+                  value={serialNumber}
+                  disabled
+                  className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                  Operator
+                </label>
+                <input
+                  type="text"
+                  value={operatorName || auth?.user || ""}
+                  disabled
+                  className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                  Timestamp
+                </label>
+                <input
+                  type="text"
+                  value={
+                    timestampUnix
+                      ? dayjs(timestampUnix * 1000).format(
+                          "MMMM D, YYYY h:mm A"
+                        )
+                      : "Capturing timestamp…"
+                  }
+                  disabled
+                  className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                  Wallet
+                </label>
+                <input
+                  type="text"
+                  value={
+                    currentAccount
+                      ? truncateAddress(currentAccount)
+                      : "Not connected"
+                  }
+                  disabled
+                  className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-white mb-1 font-semibold">
-                Is Sold?
+              <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                Location
+                {locationSource && locationSource !== "pending"
+                  ? ` • ${locationSource}`
+                  : ""}
+              </label>
+              <textarea
+                value={locationDisplay}
+                disabled
+                rows={3}
+                className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                Mark as sold?
               </label>
               <select
-                className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white focus:outline-none focus:border-white/50 transition duration-200"
-                value={isSold}
-                onChange={(e) => {
-                  const val = e.target.value === "true";
-                  setIsSold(val);
-                  if (!val) {
+                value={isSold ? "true" : "false"}
+                onChange={(event) => {
+                  const nextValue = event.target.value === "true";
+                  setIsSold(nextValue);
+                  if (!nextValue) {
                     setBuyerName("");
                     setBuyerIdentifier("");
                     setFormError("");
                   }
                 }}
+                disabled={isSupplier}
+                className={`mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none ${
+                  isSupplier ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
-                <option value="false">false</option>
-                <option value="true">true</option>
+                {options.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
               </select>
+              {isSupplier ? (
+                <p className="mt-2 text-xs text-white/50">
+                  Sale handoff is managed by the manufacturer. Supplier updates can’t mark items as sold.
+                </p>
+              ) : null}
             </div>
-          )}
-          {isSold && (
-            <div className="space-y-4">
-              <div className="text-white/90 text-sm">
-                Enter consumer details (required)
+
+            {isSold ? (
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                    Consumer full name
+                  </label>
+                  <input
+                    type="text"
+                    value={buyerName}
+                    onChange={(event) => setBuyerName(event.target.value)}
+                    placeholder="e.g., Jane Doe"
+                    className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">
+                    Consumer identifier
+                  </label>
+                  <input
+                    type="text"
+                    value={buyerIdentifier}
+                    onChange={(event) =>
+                      setBuyerIdentifier(event.target.value)
+                    }
+                    placeholder="Phone / Email / Last 4 of ID"
+                    className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-white mb-1 font-semibold">
-                  Consumer Full Name
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
-                  placeholder="e.g., Jane Doe"
-                  value={buyerName}
-                  onChange={(e) => setBuyerName(e.target.value)}
-                />
+            ) : null}
+
+            {loadingMessage ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                {loadingMessage}
               </div>
-              <div>
-                <label className="block text-white mb-1 font-semibold">
-                  Consumer Identifier
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:border-white/50 transition duration-200"
-                  placeholder="Phone / Email / Last 4 of ID"
-                  value={buyerIdentifier}
-                  onChange={(e) => setBuyerIdentifier(e.target.value)}
-                />
+            ) : null}
+
+            {formError ? (
+              <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                {formError}
               </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="submit"
+                disabled={submitting}
+                className={`${glassButtonClass} ${
+                  submitting ? "cursor-wait opacity-70" : ""
+                }`}
+              >
+                {submitting ? "Submitting…" : "Submit update"}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className={`${glassButtonClass} border-white/20 bg-white/5 hover:border-white/40 hover:bg-white/10`}
+              >
+                Cancel
+              </button>
             </div>
-          )}
-          {loading && (
-            <div className="text-center text-white/80 text-sm mb-4">
-              {loading}
-            </div>
-          )}
-          {formError && (
-            <div className="text-center text-red-200 text-sm mb-2">
-              {formError}
-            </div>
-          )}
-          <button
-            type="submit"
-            className="w-full px-4 py-3 rounded-lg bg-white text-gray-800 font-semibold hover:bg-gray-100 transition duration-200 mb-4"
-          >
-            Update Product
-          </button>
-          <button
-            type="button"
-            onClick={handleBack}
-            className="w-full px-4 py-3 rounded-lg bg-transparent border border-white text-white hover:bg-white/10 transition duration-200"
-          >
-            Back
-          </button>
-        </form>
+          </form>
+        </GlassCard>
       </div>
-    </div>
+    </AdminShell>
   );
 };
 

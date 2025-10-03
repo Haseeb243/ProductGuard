@@ -10,13 +10,41 @@ import {
   glassButtonClass,
 } from "../admin/ui";
 import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
+import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
+import useAuth from "../../hooks/useAuth";
 import { useConfig } from "../../context/ConfigContext";
 import axios from "../../api/axios";
 import { truncateAddress } from "../../utils/wallet";
 
 const Profile = () => {
-  const { auth, sidebarLinks, isManufacturer, walletAddress, connectWallet } =
-    useManufacturerWorkspace();
+  const { auth } = useAuth();
+  const {
+    isManufacturer,
+    sidebarLinks: manufacturerSidebar,
+    walletAddress: manufacturerWallet,
+    connectWallet: connectManufacturerWallet,
+  } = useManufacturerWorkspace();
+  const {
+    isSupplier,
+    sidebarLinks: supplierSidebar,
+    walletAddress: supplierWallet,
+    connectWallet: connectSupplierWallet,
+  } = useSupplierWorkspace();
+  const sidebarLinks = isManufacturer
+    ? manufacturerSidebar
+    : isSupplier
+    ? supplierSidebar
+    : null;
+  const walletAddress = isManufacturer ? manufacturerWallet : supplierWallet;
+  const connectWallet = isManufacturer
+    ? connectManufacturerWallet
+    : connectSupplierWallet;
+  const forceSidebar = isManufacturer || isSupplier;
+  const workspaceLabel = isManufacturer
+    ? "Manufacturer Workspace"
+    : isSupplier
+    ? "Supplier Hub"
+    : undefined;
   const { fileEndpoint } = useConfig();
 
   const [profile, setProfile] = useState(null);
@@ -77,6 +105,8 @@ const Profile = () => {
         label: "Role",
         value: profile?.role
           ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+          : auth?.role
+          ? auth.role.charAt(0).toUpperCase() + auth.role.slice(1)
           : "—",
         key: "role",
       },
@@ -93,15 +123,74 @@ const Profile = () => {
         key: "updated",
       },
     ];
-  }, [auth?.user, profile?.role, profile?.updated_at, walletAddress]);
+  }, [auth?.role, auth?.user, profile?.role, profile?.updated_at, walletAddress]);
+
+  const walletRoute = isManufacturer
+    ? "/manufacturer-wallet"
+    : "/supplier/wallet";
+  const profileTitle = isManufacturer
+    ? "Manufacturer Profile"
+    : isSupplier
+    ? "Supplier Profile"
+    : "Account Profile";
+  const profileSubtitle = isManufacturer
+    ? "Keep your brand identity and account controls in sync with ProductGuard."
+    : isSupplier
+    ? "Keep your supplier credentials, chat presence, and custody tools aligned with ProductGuard."
+    : "Review your ProductGuard account details.";
+  const roleDisplay = profile?.role
+    ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
+    : auth?.role
+    ? auth.role.charAt(0).toUpperCase() + auth.role.slice(1)
+    : isSupplier
+    ? "Supplier"
+    : isManufacturer
+    ? "Manufacturer"
+    : "Member";
+
+  const shortcutCards = useMemo(() => {
+    if (isManufacturer) {
+      return [
+        {
+          to: "/add-product",
+          eyebrow: "Register products",
+          description:
+            "Link new products to the Identeefi contract with on-chain provenance. Your profile details stamp each product with brand metadata.",
+        },
+        {
+          to: "/transparency",
+          eyebrow: "Transparency dashboard",
+          description:
+            "Investigate cross-ledger reconciliation for serialized goods and ensure ownership events match what you expect in market.",
+        },
+      ];
+    }
+    if (isSupplier) {
+      return [
+        {
+          to: "/supplier/scanner",
+          eyebrow: "Scan & verify",
+          description:
+            "Start with the supplier scanner to verify QR codes, capture shipment location, and kick off custody updates.",
+        },
+        {
+          to: "/update-product",
+          eyebrow: "Update custody",
+          description:
+            "Review on-chain product history and finalize supplier updates such as receiving, processing, or forwarding inventory.",
+        },
+      ];
+    }
+    return [];
+  }, [isManufacturer, isSupplier]);
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-3">
       {walletAddress ? (
-        <Link to="/manufacturer-wallet" className={glassButtonClass}>
+        <Link to={walletRoute} className={glassButtonClass}>
           Wallet workspace
         </Link>
-      ) : (
+      ) : connectWallet ? (
         <button
           type="button"
           onClick={connectWallet}
@@ -109,7 +198,7 @@ const Profile = () => {
         >
           Connect MetaMask
         </button>
-      )}
+      ) : null}
       <Link to="/2fa-settings" className={glassButtonClass}>
         Manage 2FA
       </Link>
@@ -118,15 +207,15 @@ const Profile = () => {
 
   return (
     <AdminShell
-      title="Manufacturer Profile"
-      subtitle="Keep your brand identity and account controls in sync with ProductGuard."
+      title={profileTitle}
+      subtitle={profileSubtitle}
       meta={metaSummary}
       actions={headerActions}
-      forceSidebar={isManufacturer}
+      forceSidebar={forceSidebar}
       sidebarLinks={sidebarLinks}
-      workspaceLabel={isManufacturer ? "Manufacturer Workspace" : undefined}
-      showHeaderNotifications={false}
-      showHeaderProfile={false}
+      workspaceLabel={workspaceLabel}
+      showHeaderNotifications={forceSidebar ? false : undefined}
+      showHeaderProfile={forceSidebar ? false : undefined}
     >
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8">
         {error ? (
@@ -168,12 +257,7 @@ const Profile = () => {
                 <p className="text-lg font-semibold text-white">
                   {profile?.name || "Pending profile"}
                 </p>
-                <p className="text-sm text-white/60">
-                  {profile?.role
-                    ? profile.role.charAt(0).toUpperCase() +
-                      profile.role.slice(1)
-                    : "Manufacturer"}
-                </p>
+                <p className="text-sm text-white/60">{roleDisplay}</p>
               </div>
             </div>
             <div className="grid gap-6 sm:grid-cols-2">
@@ -230,34 +314,33 @@ const Profile = () => {
           <div className="space-y-6">
             <SectionHeader
               title="Workspace shortcuts"
-              subtitle="Hop to other manufacturer tools that rely on your account profile."
+              subtitle={
+                isManufacturer
+                  ? "Hop to other manufacturer tools that rely on your account profile."
+                  : isSupplier
+                  ? "Jump into supplier tools that use your account context."
+                  : "Quick links to related ProductGuard tools."
+              }
             />
             <div className="grid gap-5 md:grid-cols-2">
-              <Link
-                to="/add-product"
-                className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70 transition hover:border-white/30 hover:bg-white/10"
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
-                  Register products
+              {shortcutCards.length ? (
+                shortcutCards.map((card) => (
+                  <Link
+                    key={card.to}
+                    to={card.to}
+                    className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70 transition hover:border-white/30 hover:bg-white/10"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
+                      {card.eyebrow}
+                    </p>
+                    <p className="mt-3">{card.description}</p>
+                  </Link>
+                ))
+              ) : (
+                <p className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+                  No shortcuts available for this role yet.
                 </p>
-                <p className="mt-3">
-                  Link new products to the Identeefi contract with on-chain
-                  provenance. Your profile details stamp each product with brand
-                  metadata.
-                </p>
-              </Link>
-              <Link
-                to="/transparency"
-                className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70 transition hover:border-white/30 hover:bg-white/10"
-              >
-                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/50">
-                  Transparency dashboard
-                </p>
-                <p className="mt-3">
-                  Investigate cross-ledger reconciliation for serialized goods
-                  and ensure ownership events match what you expect in market.
-                </p>
-              </Link>
+              )}
             </div>
           </div>
         </GradientBorderCard>

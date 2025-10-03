@@ -1784,6 +1784,15 @@ const verifyScanSchema = Joi.object({
   qrData: Joi.string().trim().required(), // expected format: "CONTRACT,serial"
   username: Joi.string().allow(null, "").default("anonymous"),
   location: Joi.string().allow(null, ""),
+  coordinates: Joi.object({
+    latitude: Joi.number().required(),
+    longitude: Joi.number().required(),
+  })
+    .allow(null)
+    .default(null),
+  geoCountry: Joi.string().allow(null, ""),
+  geoCity: Joi.string().allow(null, ""),
+  locationSource: Joi.string().allow(null, ""),
 });
 
 app.post("/verification/scan", async (req, res) => {
@@ -1797,10 +1806,25 @@ app.post("/verification/scan", async (req, res) => {
       return res.status(400).json({ success: false, message: error.message });
     }
 
-    const { qrData, username, location } = value;
+    const {
+      qrData,
+      username,
+      location,
+      coordinates,
+      geoCountry: geoCountryFromClient,
+      geoCity: geoCityFromClient,
+    } = value;
     const ipAddress = getClientIp(req);
     const userAgent = req.get("User-Agent");
-    const { country: geoCountry, city: geoCity } = resolveGeo(ipAddress);
+    const ipGeo = resolveGeo(ipAddress);
+    const finalGeoCountry =
+      geoCountryFromClient && geoCountryFromClient.trim().length
+        ? geoCountryFromClient.trim()
+        : ipGeo.country;
+    const finalGeoCity =
+      geoCityFromClient && geoCityFromClient.trim().length
+        ? geoCityFromClient.trim()
+        : ipGeo.city;
 
     // Parse QR payload
     const parts = String(qrData).split(",");
@@ -1811,6 +1835,17 @@ app.post("/verification/scan", async (req, res) => {
     }
     const qrContract = parts[0];
     const serialNumber = parts[1];
+
+    let locationToPersist = location;
+    if (!locationToPersist && coordinates?.latitude && coordinates?.longitude) {
+      locationToPersist = `lat:${coordinates.latitude};lon:${coordinates.longitude}`;
+    }
+    if (typeof locationToPersist === "string") {
+      locationToPersist = locationToPersist.trim();
+      if (locationToPersist.length === 0) {
+        locationToPersist = null;
+      }
+    }
 
     // Determine authenticity by contract matching; optionally verify product existence in DB
     const expectedContract = process.env.CONTRACT_ADDRESS || null;
@@ -1835,12 +1870,12 @@ app.post("/verification/scan", async (req, res) => {
       [
         serialNumber,
         username || "anonymous",
-        location || null,
+        locationToPersist || null,
         isAuthentic,
         ipAddress,
         userAgent,
-        geoCountry,
-        geoCity,
+        finalGeoCountry,
+        finalGeoCity,
       ]
     );
     const insertedScanId = insertResult?.rows?.[0]?.id || null;
@@ -1898,7 +1933,7 @@ app.post("/verification/scan", async (req, res) => {
             scanTime: new Date(),
             suspicionReason: suspicionReason || "Duplicate scan pattern",
             ipAddress,
-            location: location || null,
+            location: locationToPersist || null,
           });
         }
       } catch (e) {
@@ -2107,6 +2142,123 @@ app.get("/manufacturer/products-summary", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to load manufacturer product summary",
+    });
+  }
+});
+
+app.get("/supplier/scans-summary", async (req, res) => {
+  try {
+    const username = (req.query.username || "").trim();
+    const daysParam = parseInt(req.query.days, 10);
+    const limitParam = parseInt(req.query.limit, 10);
+    const locationLimitParam = parseInt(req.query.locationLimit, 10);
+
+    if (!username) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Username is required" });
+    }
+
+    const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 30;
+    const limit = Math.min(
+      Math.max(Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10, 1),
+      50
+    );
+    const locationLimit = Math.min(
+      Math.max(
+        Number.isFinite(locationLimitParam) && locationLimitParam > 0
+          ? locationLimitParam
+          : 5,
+        1
+      ),
+      10
+    );
+
+    const totalsQuery = await client.query(
+      `SELECT
+         COUNT(*)::int AS total_all_time,
+         COUNT(DISTINCT serial_number)::int AS unique_all_time,
+         MAX(scan_time) AS last_scan_at
+       FROM product_scans
+       WHERE username = $1`,
+      [username]
+    );
+
+    const recentQuery = await client.query(
+      `SELECT
+         COUNT(*)::int AS total_recent,
+         COUNT(DISTINCT serial_number)::int AS unique_recent,
+         COUNT(*) FILTER (WHERE is_authentic)::int AS authentic_recent,
+         COUNT(*) FILTER (WHERE is_suspicious)::int AS suspicious_recent
+       FROM product_scans
+       WHERE username = $1
+         AND scan_time >= NOW() - INTERVAL '${days} days'`,
+      [username]
+    );
+
+    const recentScansQuery = await client.query(
+      `SELECT
+         id,
+         serial_number,
+         scan_time,
+         location,
+         is_authentic,
+         is_suspicious,
+         suspicion_reason
+       FROM product_scans
+       WHERE username = $1
+       ORDER BY scan_time DESC
+       LIMIT $2`,
+      [username, limit]
+    );
+
+    const topLocationsQuery = await client.query(
+      `SELECT
+         COALESCE(NULLIF(TRIM(location), ''), 'Unknown') AS location,
+         COUNT(*)::int AS count
+       FROM product_scans
+       WHERE username = $1
+         AND scan_time >= NOW() - INTERVAL '${days} days'
+         AND location IS NOT NULL
+         AND TRIM(location) <> ''
+       GROUP BY location
+       ORDER BY count DESC
+       LIMIT $2`,
+      [username, locationLimit]
+    );
+
+    const totals = totalsQuery.rows?.[0] || {};
+    const recent = recentQuery.rows?.[0] || {};
+
+    return res.json({
+      success: true,
+      username,
+      totalAllTime: totals.total_all_time || 0,
+      uniqueAllTime: totals.unique_all_time || 0,
+      lastScanAt: totals.last_scan_at || null,
+      totalRecent: recent.total_recent || 0,
+      uniqueRecent: recent.unique_recent || 0,
+      authenticRecent: recent.authentic_recent || 0,
+      suspiciousRecent: recent.suspicious_recent || 0,
+      recentScans: recentScansQuery.rows.map((row) => ({
+        id: row.id,
+        serialNumber: row.serial_number,
+        scanTime: row.scan_time,
+        location: row.location,
+        isAuthentic: row.is_authentic,
+        isSuspicious: row.is_suspicious,
+        suspicionReason: row.suspicion_reason || null,
+      })),
+      topLocations: topLocationsQuery.rows.map((row) => ({
+        location: row.location || "Unknown",
+        count: row.count || 0,
+      })),
+    });
+  } catch (err) {
+    console.error("/supplier/scans-summary error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load supplier scan summary",
     });
   }
 });

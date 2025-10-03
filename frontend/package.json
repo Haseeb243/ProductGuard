@@ -28,6 +28,7 @@
     "react-geocode": "^0.2.3",
     "react-hot-toast": "^2.5.2",
     "react-qr-scanner": "^1.0.0-alpha.11",
+    "jsqr": "^1.4.0",
     "react-router-dom": "^6.8.0",
     "react-scripts": "5.0.1",
     "react-to-print": "^2.14.12",
