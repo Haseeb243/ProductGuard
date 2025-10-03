@@ -25,9 +25,7 @@ const SupplierChat = () => {
       },
       {
         label: "Wallet",
-        value: walletAddress
-          ? truncateAddress(walletAddress)
-          : "Not connected",
+        value: walletAddress ? truncateAddress(walletAddress) : "Not connected",
         key: "wallet",
       },
     ];

@@ -129,9 +129,7 @@ const Supplier = () => {
     if (chatFab) {
       chatFab.click();
     } else {
-      toast.error(
-        "Chat widget is unavailable. Refresh the page to reload it."
-      );
+      toast.error("Chat widget is unavailable. Refresh the page to reload it.");
     }
   }, []);
 
@@ -164,9 +162,7 @@ const Supplier = () => {
 
         const scansJson = await scansRes.json().catch(() => null);
         if (!scansRes.ok || !scansJson?.success) {
-          throw new Error(
-            scansJson?.message || "Unable to load scan summary"
-          );
+          throw new Error(scansJson?.message || "Unable to load scan summary");
         }
 
         const activityJson = await activityRes.json().catch(() => null);
@@ -374,7 +370,7 @@ const Supplier = () => {
       toolbar={quickLinksToolbar}
       sidebarTitle="Supplier"
       sidebarLinks={sidebarLinks}
-  forceSidebar={isSupplier}
+      forceSidebar={isSupplier}
       workspaceLabel="Supplier Hub"
       showHeaderNotifications={false}
     >
@@ -589,7 +585,8 @@ const Supplier = () => {
                   </span>
                 </p>
                 <p>
-                  Match this wallet inside the Update Product console so on-chain traces line up with your supplier identity.
+                  Match this wallet inside the Update Product console so
+                  on-chain traces line up with your supplier identity.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -630,10 +627,13 @@ const Supplier = () => {
               <Divider className="my-6" />
               <div className="space-y-3 text-sm text-white/70">
                 <p>
-                  Use the guided workflow to refresh product attributes, upload supporting documents, and synchronize on-chain provenance with partner systems.
+                  Use the guided workflow to refresh product attributes, upload
+                  supporting documents, and synchronize on-chain provenance with
+                  partner systems.
                 </p>
                 <p>
-                  Prefer scanning in the field? Jump to the live scanner to verify shipments before handoff.
+                  Prefer scanning in the field? Jump to the live scanner to
+                  verify shipments before handoff.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -657,23 +657,29 @@ const Supplier = () => {
                 {topLocations.length ? (
                   <ul className="space-y-1 pl-4">
                     {topLocations.map((entry) => (
-                      <li key={`${entry.location}-${entry.count}`} className="list-disc">
+                      <li
+                        key={`${entry.location}-${entry.count}`}
+                        className="list-disc"
+                      >
                         <span className="font-medium text-white">
                           {formatLocation(entry.location)}
                         </span>
                         <span className="text-white/60">
-                          {" "}• {formatNumber(entry.count)} scans
+                          {" "}
+                          • {formatNumber(entry.count)} scans
                         </span>
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <p className="text-white/60">
-                    Location insights will surface once scans start streaming in.
+                    Location insights will surface once scans start streaming
+                    in.
                   </p>
                 )}
                 <p>
-                  Visit Transparency to export reconciliation CSVs and share provenance evidence with retailers.
+                  Visit Transparency to export reconciliation CSVs and share
+                  provenance evidence with retailers.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -719,8 +725,10 @@ const Supplier = () => {
                         </div>
                         {entry?.details || entry?.metadata ? (
                           <p className="mt-2 text-xs text-white/60">
-                            {(typeof entry.metadata === "string" && entry.metadata) ||
-                              (typeof entry.details === "string" && entry.details) ||
+                            {(typeof entry.metadata === "string" &&
+                              entry.metadata) ||
+                              (typeof entry.details === "string" &&
+                                entry.details) ||
                               ""}
                           </p>
                         ) : null}
@@ -808,7 +816,9 @@ const Supplier = () => {
               />
               <Divider className="my-4" />
               <p className="text-sm text-white/70">
-                Use the floating chat beacon in the lower-right corner to start a live conversation. Threads stay linked to your supplier account for auditability.
+                Use the floating chat beacon in the lower-right corner to start
+                a live conversation. Threads stay linked to your supplier
+                account for auditability.
               </p>
               <div className="flex flex-wrap gap-3">
                 <button
@@ -844,7 +854,8 @@ const Supplier = () => {
                   </span>
                 </p>
                 <p>
-                  Enforce two-factor authentication so only verified operators can edit product metadata or confirm shipments.
+                  Enforce two-factor authentication so only verified operators
+                  can edit product metadata or confirm shipments.
                 </p>
               </div>
               <div className="mt-6 flex flex-wrap gap-3">

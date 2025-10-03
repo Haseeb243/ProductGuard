@@ -171,9 +171,7 @@ const UpdateProduct = () => {
       },
       {
         label: "Wallet",
-        value: walletAddress
-          ? truncateAddress(walletAddress)
-          : "Not connected",
+        value: walletAddress ? truncateAddress(walletAddress) : "Not connected",
         key: "wallet",
       },
       {
@@ -285,13 +283,13 @@ const UpdateProduct = () => {
                 )}
               </div>
               <div className="text-center text-sm text-white/60">
-                Serial number: {" "}
+                Serial number:{" "}
                 <span className="font-semibold text-white">
                   {serialNumber || "—"}
                 </span>
               </div>
               <div className="text-xs text-white/40">
-                Wallet in MetaMask: {" "}
+                Wallet in MetaMask:{" "}
                 <span className="font-semibold text-white">
                   {currentAccount ? truncateAddress(currentAccount) : "—"}
                 </span>

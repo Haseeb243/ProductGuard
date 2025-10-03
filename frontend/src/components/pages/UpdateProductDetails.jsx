@@ -6,7 +6,12 @@ import Geocode from "react-geocode";
 import dayjs from "dayjs";
 import { toast } from "react-hot-toast";
 import AdminShell from "../admin/AdminShell";
-import { GlassCard, SectionHeader, Divider, glassButtonClass } from "../admin/ui";
+import {
+  GlassCard,
+  SectionHeader,
+  Divider,
+  glassButtonClass,
+} from "../admin/ui";
 import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
 import { useConfig } from "../../context/ConfigContext";
 import abi from "../../utils/Identeefi.json";
@@ -144,7 +149,9 @@ const UpdateProductDetails = () => {
             "Unable to access device location. Enable permissions and retry."
         );
         setLocationSource("denied");
-        toast.error("Location access denied. Enter updates manually if needed.");
+        toast.error(
+          "Location access denied. Enter updates manually if needed."
+        );
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -177,9 +184,7 @@ const UpdateProductDetails = () => {
       },
       {
         label: "Wallet",
-        value: walletAddress
-          ? truncateAddress(walletAddress)
-          : "Not connected",
+        value: walletAddress ? truncateAddress(walletAddress) : "Not connected",
         key: "wallet",
       },
       {
@@ -269,7 +274,9 @@ const UpdateProductDetails = () => {
           });
         } catch (error) {
           console.error("Failed to record consumer ownership:", error);
-          toast.error("Ownership transfer recorded on-chain but failed in backend.");
+          toast.error(
+            "Ownership transfer recorded on-chain but failed in backend."
+          );
         }
       }
 
@@ -333,7 +340,9 @@ const UpdateProductDetails = () => {
                 Product details were updated successfully.
               </p>
               <p className="text-xs text-emerald-100/80">
-                {`Logged at ${dayjs(lastSuccessAt).format("MMM D, YYYY h:mm A")}`}
+                {`Logged at ${dayjs(lastSuccessAt).format(
+                  "MMM D, YYYY h:mm A"
+                )}`}
               </p>
             </div>
           </GlassCard>
@@ -457,7 +466,8 @@ const UpdateProductDetails = () => {
               </select>
               {isSupplier ? (
                 <p className="mt-2 text-xs text-white/50">
-                  Sale handoff is managed by the manufacturer. Supplier updates can’t mark items as sold.
+                  Sale handoff is managed by the manufacturer. Supplier updates
+                  can’t mark items as sold.
                 </p>
               ) : null}
             </div>
@@ -483,9 +493,7 @@ const UpdateProductDetails = () => {
                   <input
                     type="text"
                     value={buyerIdentifier}
-                    onChange={(event) =>
-                      setBuyerIdentifier(event.target.value)
-                    }
+                    onChange={(event) => setBuyerIdentifier(event.target.value)}
                     placeholder="Phone / Email / Last 4 of ID"
                     className="mt-2 w-full rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
                   />

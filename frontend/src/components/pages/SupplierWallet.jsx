@@ -29,9 +29,7 @@ const SupplierWallet = () => {
       },
       {
         label: "Wallet",
-        value: walletAddress
-          ? truncateAddress(walletAddress)
-          : "Not connected",
+        value: walletAddress ? truncateAddress(walletAddress) : "Not connected",
         key: "wallet",
       },
       {
@@ -119,7 +117,9 @@ const SupplierWallet = () => {
                   Custody timeline
                 </p>
                 <p className="mt-3">
-                  MetaMask signatures confirm which supplier handled a product and when, so downstream partners always see the latest custody trace.
+                  MetaMask signatures confirm which supplier handled a product
+                  and when, so downstream partners always see the latest custody
+                  trace.
                 </p>
               </div>
               <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">
@@ -127,7 +127,9 @@ const SupplierWallet = () => {
                   Compliance evidence
                 </p>
                 <p className="mt-3">
-                  Blockchain anchors provide tamper-resistant proof for regulators and retailers. Stay audit-ready without juggling spreadsheets.
+                  Blockchain anchors provide tamper-resistant proof for
+                  regulators and retailers. Stay audit-ready without juggling
+                  spreadsheets.
                 </p>
               </div>
             </div>

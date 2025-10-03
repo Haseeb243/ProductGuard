@@ -123,7 +123,13 @@ const Profile = () => {
         key: "updated",
       },
     ];
-  }, [auth?.role, auth?.user, profile?.role, profile?.updated_at, walletAddress]);
+  }, [
+    auth?.role,
+    auth?.user,
+    profile?.role,
+    profile?.updated_at,
+    walletAddress,
+  ]);
 
   const walletRoute = isManufacturer
     ? "/manufacturer-wallet"

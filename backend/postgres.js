@@ -2161,7 +2161,10 @@ app.get("/supplier/scans-summary", async (req, res) => {
 
     const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 30;
     const limit = Math.min(
-      Math.max(Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10, 1),
+      Math.max(
+        Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10,
+        1
+      ),
       50
     );
     const locationLimit = Math.min(

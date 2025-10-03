@@ -149,11 +149,7 @@ function App() {
             path="/supplier/scanner"
             element={<SupplierScanner />}
           ></Route>
-          <Route
-            exact
-            path="/supplier/chat"
-            element={<SupplierChat />}
-          ></Route>
+          <Route exact path="/supplier/chat" element={<SupplierChat />}></Route>
           <Route
             exact
             path="/supplier/wallet"

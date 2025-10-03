@@ -150,10 +150,7 @@ const SupplierScanner = () => {
             setResolvedLocation(descriptive);
             setGeoCountry(data.countryName || data.countryCode || "");
             setGeoCity(
-              data.city ||
-                data.locality ||
-                data.principalSubdivision ||
-                ""
+              data.city || data.locality || data.principalSubdivision || ""
             );
             setLocationSource("bigdatacloud");
             return;
@@ -252,7 +249,9 @@ const SupplierScanner = () => {
       const locationDisplay = resolvedLocation
         ? resolvedLocation
         : coordsSnapshot
-        ? `lat:${coordsSnapshot.latitude.toFixed(4)}, lon:${coordsSnapshot.longitude.toFixed(4)}`
+        ? `lat:${coordsSnapshot.latitude.toFixed(
+            4
+          )}, lon:${coordsSnapshot.longitude.toFixed(4)}`
         : geoError || "";
       const locationContext = {
         locationString,
@@ -272,7 +271,10 @@ const SupplierScanner = () => {
           locationSource,
         });
         const { isAuthentic, isSuspicious } = response.data || {};
-        const outcome = { isAuthentic: Boolean(isAuthentic), isSuspicious: Boolean(isSuspicious) };
+        const outcome = {
+          isAuthentic: Boolean(isAuthentic),
+          isSuspicious: Boolean(isSuspicious),
+        };
         let route;
         if (outcome.isAuthentic) {
           if (role === "supplier" || role === "retailer") {
@@ -314,7 +316,9 @@ const SupplierScanner = () => {
                 : "View authenticity",
           };
           handleVerificationOutcome(payload, outcome, route, locationContext);
-          toast.error("Live verification unavailable. Using contract match fallback.");
+          toast.error(
+            "Live verification unavailable. Using contract match fallback."
+          );
         } else {
           const route = {
             path: "/fake-product",
@@ -324,9 +328,7 @@ const SupplierScanner = () => {
           handleVerificationOutcome(payload, outcome, route, locationContext);
           toast.error("Verification failed. Flagging as suspicious.");
         }
-        setVerifyError(
-          err?.message || "Unable to reach verification service."
-        );
+        setVerifyError(err?.message || "Unable to reach verification service.");
       } finally {
         setVerifying(false);
       }
@@ -356,8 +358,7 @@ const SupplierScanner = () => {
     if (resolvedLocation) return resolvedLocation;
     if (geoError) return geoError;
     if (locationSource === "denied") return "Location permission denied";
-    if (locationSource === "unsupported")
-      return "Geolocation unsupported";
+    if (locationSource === "unsupported") return "Geolocation unsupported";
     if (locationSource === "pending") return "Awaiting permission";
     return "Location not captured";
   }, [capturingLocation, geoError, resolvedLocation, locationSource]);
@@ -445,7 +446,8 @@ const SupplierScanner = () => {
               <div className="rounded-3xl border border-white/12 bg-black/60 p-4">
                 <QrScanner passData={handleCameraScan} />
                 <p className="mt-4 text-sm text-white/60">
-                  Keep the QR within the frame and ensure lighting is even so the scanner can read the code quickly.
+                  Keep the QR within the frame and ensure lighting is even so
+                  the scanner can read the code quickly.
                 </p>
               </div>
             </div>
@@ -456,7 +458,9 @@ const SupplierScanner = () => {
                 description="Drop a QR screenshot or photo if you’re off the loading dock."
               />
               <label className="flex h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center text-sm text-white/60 transition hover:border-white/40 hover:bg-white/10">
-                <span className="font-semibold text-white">Upload QR image</span>
+                <span className="font-semibold text-white">
+                  Upload QR image
+                </span>
                 <span className="mt-2 text-xs text-white/50">
                   Supports JPG, PNG, WebP up to 10 MB
                 </span>
@@ -510,7 +514,8 @@ const SupplierScanner = () => {
             </div>
           ) : (
             <p className="text-sm text-white/60">
-              Once a scan is verified, you’ll see the quick action to jump straight into updating the product record.
+              Once a scan is verified, you’ll see the quick action to jump
+              straight into updating the product record.
             </p>
           )}
         </GlassCard>
