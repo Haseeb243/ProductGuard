@@ -12,20 +12,85 @@ import {
   glassButtonClass,
 } from "../admin/ui";
 import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
+import useRetailerWorkspace from "../../hooks/useRetailerWorkspace";
 import { useConfig } from "../../context/ConfigContext";
 import abi from "../../utils/Identeefi.json";
 import { findMetaMaskAccount, truncateAddress } from "../../utils/wallet";
 
 const CONTRACT_ABI = abi.abi;
 
-const UpdateProduct = () => {
+const defaultCopy = {
+  roleLabel: "Supplier",
+  workspaceLabel: "Supplier Hub",
+  title: "Review product before updating",
+  subtitle:
+    "Confirm on-chain details, check custody trail, and proceed to the update workflow.",
+  rescanLabel: "Rescan product",
+};
+
+const UpdateProduct = ({ copy: copyOverrides = {} } = {}) => {
+  const supplierWorkspace = useSupplierWorkspace();
+  const retailerWorkspace = useRetailerWorkspace();
+
+  const activeWorkspace = supplierWorkspace?.isSupplier
+    ? {
+        ...supplierWorkspace,
+        roleLabel: "Supplier",
+        workspaceLabel: "Supplier Hub",
+        rescanRoute: "/supplier/scanner",
+      }
+    : retailerWorkspace?.isRetailer
+    ? {
+        ...retailerWorkspace,
+        roleLabel: "Retailer",
+        workspaceLabel: "Retailer Hub",
+        rescanRoute: "/retailer/scanner",
+      }
+    : {
+        ...supplierWorkspace,
+        roleLabel: "Supplier",
+        workspaceLabel: "Supplier Hub",
+        rescanRoute: "/supplier/scanner",
+      };
+
   const {
     sidebarLinks,
-    isSupplier,
     walletAddress,
     connectWallet,
     checkingWallet,
-  } = useSupplierWorkspace();
+    isSupplier = false,
+    isRetailer = false,
+    isCurrentRole = false,
+  } = activeWorkspace || {};
+
+  const roleLabel = activeWorkspace?.roleLabel || defaultCopy.roleLabel;
+  const roleLower = roleLabel.toLowerCase();
+  const copy = useMemo(
+    () => ({
+      ...defaultCopy,
+      ...copyOverrides,
+      roleLabel,
+    }),
+    [copyOverrides, roleLabel]
+  );
+  const applyRole = useCallback(
+    (value) => {
+      if (typeof value !== "string") return value;
+      return value
+        .replace(/Supplier/g, roleLabel)
+        .replace(/supplier/g, roleLower);
+    },
+    [roleLabel, roleLower]
+  );
+
+  const forceSidebar =
+    typeof isCurrentRole === "boolean"
+      ? isCurrentRole
+      : Boolean(isSupplier || isRetailer);
+  const workspaceLabel = applyRole(
+    activeWorkspace?.workspaceLabel || `${roleLabel} Hub`
+  );
+  const rescanRoute = activeWorkspace?.rescanRoute || "/supplier/scanner";
 
   const { apiBaseUrl, contractAddress, publicRpcUrl } = useConfig();
   const navigate = useNavigate();
@@ -202,10 +267,10 @@ const UpdateProduct = () => {
     <div className="flex flex-wrap gap-3">
       <button
         type="button"
-        onClick={() => navigate("/supplier/scanner")}
+        onClick={() => navigate(rescanRoute)}
         className={glassButtonClass}
       >
-        Rescan product
+        {applyRole(copy.rescanLabel)}
       </button>
       <button
         type="button"
@@ -236,13 +301,13 @@ const UpdateProduct = () => {
 
   return (
     <AdminShell
-      title="Review product before updating"
-      subtitle="Confirm on-chain details, check custody trail, and proceed to the update workflow."
+      title={applyRole(copy.title)}
+      subtitle={applyRole(copy.subtitle)}
       meta={metaSummary}
       actions={headerActions}
-      forceSidebar={isSupplier}
+      forceSidebar={forceSidebar}
       sidebarLinks={sidebarLinks}
-      workspaceLabel={isSupplier ? "Supplier Hub" : undefined}
+      workspaceLabel={forceSidebar ? workspaceLabel : undefined}
       showHeaderNotifications={false}
     >
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">

@@ -11,6 +11,7 @@ import {
 } from "../admin/ui";
 import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
 import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
+import useRetailerWorkspace from "../../hooks/useRetailerWorkspace";
 import useAuth from "../../hooks/useAuth";
 import { useConfig } from "../../context/ConfigContext";
 import axios from "../../api/axios";
@@ -30,21 +31,47 @@ const Profile = () => {
     walletAddress: supplierWallet,
     connectWallet: connectSupplierWallet,
   } = useSupplierWorkspace();
-  const sidebarLinks = isManufacturer
-    ? manufacturerSidebar
+  const {
+    isRetailer,
+    sidebarLinks: retailerSidebar,
+    walletAddress: retailerWallet,
+    connectWallet: connectRetailerWallet,
+  } = useRetailerWorkspace();
+
+  const activeWorkspace = isManufacturer
+    ? {
+        roleLabel: "Manufacturer",
+        sidebarLinks: manufacturerSidebar,
+        walletAddress: manufacturerWallet,
+        connectWallet: connectManufacturerWallet,
+        workspaceLabel: "Manufacturer Workspace",
+        walletRoute: "/manufacturer-wallet",
+      }
     : isSupplier
-    ? supplierSidebar
+    ? {
+        roleLabel: "Supplier",
+        sidebarLinks: supplierSidebar,
+        walletAddress: supplierWallet,
+        connectWallet: connectSupplierWallet,
+        workspaceLabel: "Supplier Hub",
+        walletRoute: "/supplier/wallet",
+      }
+    : isRetailer
+    ? {
+        roleLabel: "Retailer",
+        sidebarLinks: retailerSidebar,
+        walletAddress: retailerWallet,
+        connectWallet: connectRetailerWallet,
+        workspaceLabel: "Retailer Hub",
+        walletRoute: "/retailer/wallet",
+      }
     : null;
-  const walletAddress = isManufacturer ? manufacturerWallet : supplierWallet;
-  const connectWallet = isManufacturer
-    ? connectManufacturerWallet
-    : connectSupplierWallet;
-  const forceSidebar = isManufacturer || isSupplier;
-  const workspaceLabel = isManufacturer
-    ? "Manufacturer Workspace"
-    : isSupplier
-    ? "Supplier Hub"
-    : undefined;
+
+  const sidebarLinks = activeWorkspace?.sidebarLinks ?? null;
+  const walletAddress = activeWorkspace?.walletAddress ?? null;
+  const connectWallet = activeWorkspace?.connectWallet;
+  const forceSidebar = Boolean(isManufacturer || isSupplier || isRetailer);
+  const workspaceLabel = activeWorkspace?.workspaceLabel;
   const { fileEndpoint } = useConfig();
 
   const [profile, setProfile] = useState(null);
@@ -131,28 +158,26 @@ const Profile = () => {
     walletAddress,
   ]);
 
-  const walletRoute = isManufacturer
-    ? "/manufacturer-wallet"
-    : "/supplier/wallet";
-  const profileTitle = isManufacturer
-    ? "Manufacturer Profile"
-    : isSupplier
-    ? "Supplier Profile"
-    : "Account Profile";
-  const profileSubtitle = isManufacturer
-    ? "Keep your brand identity and account controls in sync with ProductGuard."
-    : isSupplier
-    ? "Keep your supplier credentials, chat presence, and custody tools aligned with ProductGuard."
-    : "Review your ProductGuard account details.";
+  const walletRoute = activeWorkspace?.walletRoute || "/supplier/wallet";
+  const activeRoleLabel =
+    activeWorkspace?.roleLabel ||
+    (auth?.role
+      ? auth.role.charAt(0).toUpperCase() + auth.role.slice(1)
+      : "Member");
+  const profileTitle = `${activeRoleLabel} Profile`;
+  const profileSubtitle =
+    activeWorkspace?.roleLabel === "Manufacturer"
+      ? "Keep your brand identity and account controls in sync with ProductGuard."
+      : activeWorkspace?.roleLabel === "Supplier"
+      ? "Keep your supplier credentials, chat presence, and custody tools aligned with ProductGuard."
+      : activeWorkspace?.roleLabel === "Retailer"
+      ? "Keep your retail identity, chat presence, and authenticity workflows aligned with ProductGuard."
+      : "Review your ProductGuard account details.";
   const roleDisplay = profile?.role
     ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1)
     : auth?.role
     ? auth.role.charAt(0).toUpperCase() + auth.role.slice(1)
-    : isSupplier
-    ? "Supplier"
-    : isManufacturer
-    ? "Manufacturer"
-    : "Member";
+    : activeRoleLabel;
 
   const shortcutCards = useMemo(() => {
     if (isManufacturer) {
@@ -187,8 +212,24 @@ const Profile = () => {
         },
       ];
     }
+    if (isRetailer) {
+      return [
+        {
+          to: "/retailer/scanner",
+          eyebrow: "Scan & verify",
+          description:
+            "Start with the retail scanner to verify QR codes, capture store location, and kick off authenticity updates.",
+        },
+        {
+          to: "/update-product",
+          eyebrow: "Update authenticity",
+          description:
+            "Review on-chain product history and finalize store updates such as receiving inventory or addressing escalations.",
+        },
+      ];
+    }
     return [];
-  }, [isManufacturer, isSupplier]);
+  }, [isManufacturer, isSupplier, isRetailer]);
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-3">

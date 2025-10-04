@@ -1,142 +1,76 @@
-import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import LogoutIcon from "@mui/icons-material/Logout";
-import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
-import QrCodeScannerOutlinedIcon from "@mui/icons-material/QrCodeScannerOutlined";
-import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
-import WalletOutlinedIcon from "@mui/icons-material/WalletOutlined";
-import bgImg from "../../img/bg.png";
-import logoImg from "../../img/logo.png";
-import useAuth from "../../hooks/useAuth";
+import SupplyWorkspaceDashboard from "./SupplyWorkspaceDashboard";
+import useRetailerWorkspace from "../../hooks/useRetailerWorkspace";
 
-const getEthereumObject = () => window.ethereum;
-
-const findMetaMaskAccount = async () => {
-  try {
-    const ethereum = getEthereumObject();
-    if (!ethereum) {
-      console.error("Make sure you have Metamask!");
-      return null;
-    }
-    const accounts = await ethereum.request({ method: "eth_accounts" });
-    if (accounts.length !== 0) {
-      return accounts[0];
-    } else {
-      return null;
-    }
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
+const retailerCopy = {
+  shellTitle: "Retailer Authenticity Deck",
+  shellSubtitle:
+    "Watch product provenance signals, guide store associates, and sync escalation workflows.",
+  workspaceLabel: "Retailer Hub",
+  sidebarTitle: "Retailer",
+  roleLabel: "Retailer",
+  workspaceSlug: "retailer",
+  summaryEndpoint: "/retailer/scans-summary",
+  quickLinkRoutes: {
+    scanner: "/retailer/scanner",
+    wallet: "/retailer/wallet",
+    chat: "/retailer/chat",
+  },
+  overviewEyebrow: "Store intelligence",
+  overviewTitle: "Retailer scan overview",
+  overviewDescription:
+    "Track in-store verification momentum, spot product anomalies, and coach teams on next steps.",
+  scans30Text: "Across all retail locations in the last month",
+  authenticText: "Percentage of scans reconciling with manufacturer provenance",
+  suspiciousText:
+    "Signals mismatched serials, duplicate wallets, or tampered goods",
+  averageText: "Keep store teams focused on consistent authenticity checks",
+  quickNavActivity: "Recent store activity",
+  quickNavLocations: "Top-performing stores",
+  quickNavSupport: "Contact retail support",
+  chatButton: "Retailer support",
+  locationsTitle: "Storefront scan hotspots",
+  locationsEyebrow: "Store spotlight",
+  locationsDescription:
+    "See which stores or districts are driving verification volume right now.",
+  locationsEmpty:
+    "No store scans detected in the last 30 days. Encourage associates to verify inventory in receiving.",
+  activityTitle: "Latest retailer actions",
+  activityEyebrow: "Store timeline",
+  activityDescription:
+    "Trace the latest catalog edits, transparency downloads, and support escalations from your stores.",
+  activityEmpty: "No recent retailer activity logged in the last 30 entries.",
+  scansTitle: "Latest authenticity scans",
+  scansEyebrow: "Recent verifications",
+  scansDescription:
+    "Review the most recent QR scans from store teams and jump into affected product records.",
+  scansEmpty:
+    "No recent scans. Encourage store teams to verify batches at receiving docks.",
+  walletEyebrow: "Wallet status",
+  walletTitle: "MetaMask connection",
+  walletDescription:
+    "Link your retail custody wallet to sync on-chain authenticity receipts with headquarters.",
+  walletConnectedText: "Transactions sync to retailer transparency dashboards",
+  walletDisconnectedText:
+    "Connect MetaMask to start anchoring store events on-chain",
+  profileEyebrow: "Retail identity",
+  profileTitle: "Profile & trust signals",
+  profileDescription:
+    "Keep your retailer profile current so suppliers recognize your orders instantly.",
+  updateEyebrow: "Catalog upkeep",
+  updateTitle: "Manage product records",
+  updateDescription:
+    "Push catalog updates, flag suspicious PO numbers, and attach compliance documents from stores.",
+  transparencyEyebrow: "Transparency",
+  transparencyTitle: "Customer transparency",
+  transparencyDescription:
+    "Share provenance proof with customer success teams and surface discrepancies fast.",
 };
 
-const Retailer = () => {
-  const [currentAccount, setCurrentAccount] = useState("");
-  const navigate = useNavigate();
-  const { logout } = useAuth();
-
-  useEffect(() => {
-    findMetaMaskAccount().then((account) => {
-      if (account !== null) {
-        setCurrentAccount(account);
-      }
-    });
-  }, []);
-
-  const connectWallet = async () => {
-    try {
-      const ethereum = getEthereumObject();
-      if (!ethereum) {
-        alert("Get MetaMask!");
-        return;
-      }
-      const accounts = await ethereum.request({
-        method: "eth_requestAccounts",
-      });
-      setCurrentAccount(accounts[0]);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login", { replace: true });
-  };
-
-  return (
-    <div
-      className="min-h-screen w-full flex items-center justify-center bg-gray-950 bg-center bg-no-repeat relative"
-      style={{
-        backgroundImage: `linear-gradient(rgba(10,10,20,0.75),rgba(10,10,20,0.85)), url(${bgImg})`,
-        backgroundSize: "contain",
-      }}
-    >
-      <div className="w-full max-w-md mx-auto px-4 py-8 relative">
-        <div className="absolute top-4 right-4 z-10">
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-gray-300 hover:text-white bg-gray-800/50 hover:bg-gray-700/50 backdrop-blur-sm border border-gray-700/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200"
-          >
-            <LogoutIcon className="mr-2 h-5 w-5" />
-            Logout
-          </button>
-        </div>
-
-        <div className="relative rounded-2xl p-1 mt-8 bg-gradient-to-tr from-primary-500 via-indigo-500 to-primary-400 animate-gradient-border">
-          <div className="relative bg-gray-900/80 backdrop-blur-lg shadow-2xl rounded-2xl p-10 border border-gray-800">
-            <div className="flex flex-col items-center mb-8">
-              <img
-                src={logoImg}
-                alt="ProductGuard Logo"
-                className="h-16 mb-2 drop-shadow-[0_0_16px_rgba(14,165,233,0.5)]"
-              />
-              <h2 className="text-lg font-semibold text-primary-400 mb-1">
-                Welcome to
-              </h2>
-              <h1 className="text-3xl font-extrabold text-white tracking-tight">
-                Retailer Dashboard
-              </h1>
-            </div>
-
-            <div className="space-y-4">
-              <Link to="/profile" className="block">
-                <button className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg shadow-cyan-500/25 transition-all duration-200 transform hover:scale-[1.02]">
-                  <AccountCircleOutlinedIcon className="h-5 w-5" />
-                  Check Profile
-                </button>
-              </Link>
-
-              <Link to="/scanner" className="block">
-                <button className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg shadow-cyan-500/25 transition-all duration-200 transform hover:scale-[1.02]">
-                  <QrCodeScannerOutlinedIcon className="h-5 w-5" />
-                  Update Product
-                </button>
-              </Link>
-
-              <Link to="/transparency" className="block">
-                <button className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-emerald-400 to-cyan-500 hover:from-emerald-500 hover:to-cyan-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-400 shadow-lg shadow-emerald-400/20 transition-all duration-200 transform hover:scale-[1.02]">
-                  <InsightsOutlinedIcon className="h-5 w-5" />
-                  Transparency Dashboard
-                </button>
-              </Link>
-
-              {!currentAccount && (
-                <button
-                  onClick={connectWallet}
-                  className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-cyan-500 to-indigo-500 hover:from-cyan-600 hover:to-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 shadow-lg shadow-cyan-500/25 transition-all duration-200 transform hover:scale-[1.02]"
-                >
-                  <WalletOutlinedIcon className="h-5 w-5" />
-                  Connect Wallet
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+const Retailer = () => (
+  <SupplyWorkspaceDashboard
+    workspaceHook={useRetailerWorkspace}
+    copy={retailerCopy}
+  />
+);
 
 export default Retailer;

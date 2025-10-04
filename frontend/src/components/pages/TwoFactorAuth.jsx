@@ -14,6 +14,7 @@ import {
 } from "../admin/ui";
 import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
 import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
+import useRetailerWorkspace from "../../hooks/useRetailerWorkspace";
 
 const deriveOtpAuthUrl = (secret, username) => {
   if (!secret || !username) return null;
@@ -33,6 +34,7 @@ const TwoFactorAuth = () => {
   const { isManufacturer, sidebarLinks: manufacturerSidebar } =
     useManufacturerWorkspace();
   const { isSupplier, sidebarLinks: supplierSidebar } = useSupplierWorkspace();
+  const { isRetailer, sidebarLinks: retailerSidebar } = useRetailerWorkspace();
   const navigate = useNavigate();
 
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
@@ -207,16 +209,20 @@ const TwoFactorAuth = () => {
     return <Navigate to="/login" replace />;
   }
 
-  const forceSidebar = isManufacturer || isSupplier;
+  const forceSidebar = isManufacturer || isSupplier || isRetailer;
   const activeSidebar = isManufacturer
     ? manufacturerSidebar
     : isSupplier
     ? supplierSidebar
+    : isRetailer
+    ? retailerSidebar
     : null;
   const workspaceLabel = isManufacturer
     ? "Manufacturer Workspace"
     : isSupplier
     ? "Supplier Hub"
+    : isRetailer
+    ? "Retailer Hub"
     : undefined;
 
   return (

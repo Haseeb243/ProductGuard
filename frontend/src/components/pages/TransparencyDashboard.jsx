@@ -7,6 +7,7 @@ import AdminShell from "../admin/AdminShell";
 import { GlassCard, glassButtonClass, SectionHeader } from "../admin/ui";
 import useManufacturerWorkspace from "../../hooks/useManufacturerWorkspace";
 import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
+import useRetailerWorkspace from "../../hooks/useRetailerWorkspace";
 
 const STATUS_STYLES = {
   ok: {
@@ -42,6 +43,7 @@ const TransparencyDashboard = () => {
   const { isManufacturer, sidebarLinks: manufacturerSidebar } =
     useManufacturerWorkspace();
   const { isSupplier, sidebarLinks: supplierSidebar } = useSupplierWorkspace();
+  const { isRetailer, sidebarLinks: retailerSidebar } = useRetailerWorkspace();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -313,16 +315,20 @@ const TransparencyDashboard = () => {
     </GlassCard>
   );
 
-  const forceSidebar = isManufacturer || isSupplier;
+  const forceSidebar = isManufacturer || isSupplier || isRetailer;
   const activeSidebar = isManufacturer
     ? manufacturerSidebar
     : isSupplier
     ? supplierSidebar
+    : isRetailer
+    ? retailerSidebar
     : null;
   const workspaceLabel = isManufacturer
     ? "Manufacturer Workspace"
     : isSupplier
     ? "Supplier Hub"
+    : isRetailer
+    ? "Retailer Hub"
     : undefined;
 
   return (

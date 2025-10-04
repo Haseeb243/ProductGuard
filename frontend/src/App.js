@@ -29,6 +29,9 @@ import ManufacturerWallet from "./components/pages/ManufacturerWallet";
 import SupplierChat from "./components/pages/SupplierChat";
 import SupplierWallet from "./components/pages/SupplierWallet";
 import SupplierScanner from "./components/pages/SupplierScanner";
+import RetailerScanner from "./components/pages/RetailerScanner";
+import RetailerChat from "./components/pages/RetailerChat";
+import RetailerWallet from "./components/pages/RetailerWallet";
 
 function App() {
   return (
@@ -159,6 +162,17 @@ function App() {
 
         <Route element={<RequireAuth allowedRoles={["retailer"]} />}>
           <Route exact path="/retailer" element={<Retailer />}></Route>
+          <Route
+            exact
+            path="/retailer/scanner"
+            element={<RetailerScanner />}
+          ></Route>
+          <Route exact path="/retailer/chat" element={<RetailerChat />}></Route>
+          <Route
+            exact
+            path="/retailer/wallet"
+            element={<RetailerWallet />}
+          ></Route>
         </Route>
 
         {/* catch all */}

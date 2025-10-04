@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jsQR from "jsqr";
 import { toast } from "react-hot-toast";
@@ -25,6 +25,42 @@ const parseSerialFromQr = (payload = "") => {
 const parseContractFromQr = (payload = "") => {
   const parts = payload.split(",");
   return (parts[0] || "").trim();
+};
+
+const sanitizeName = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const inferCityCountryFromLocationString = (value) => {
+  if (!value || typeof value !== "string") {
+    return { city: null, country: null };
+  }
+
+  const tokens = value
+    .split(",")
+    .map((token) => sanitizeName(token))
+    .filter((token) => token && !/^lat:/i.test(token) && !/^lon:/i.test(token));
+
+  if (!tokens.length) {
+    return { city: null, country: null };
+  }
+
+  const country = tokens[tokens.length - 1] || null;
+  let city = null;
+
+  for (let index = tokens.length - 2; index >= 0; index -= 1) {
+    const candidate = tokens[index];
+    if (candidate) {
+      city = candidate;
+      break;
+    }
+  }
+
+  return { city, country };
 };
 
 const decodeQrFromFile = (file) => {
@@ -54,8 +90,57 @@ const decodeQrFromFile = (file) => {
   });
 };
 
-const SupplierScanner = () => {
-  const { auth, sidebarLinks, isSupplier } = useSupplierWorkspace();
+const defaultCopy = {
+  roleLabel: "Supplier",
+  workspaceLabel: "Supplier Hub",
+  shellTitle: "Supplier Scanner",
+  shellSubtitle:
+    "Verify shipments, capture QR evidence, and step through product updates in one flow.",
+};
+
+const SupplierScanner = ({
+  workspaceHook = useSupplierWorkspace,
+  copy: copyOverrides = {},
+} = {}) => {
+  const resolvedHook = workspaceHook || useSupplierWorkspace;
+  const workspace = resolvedHook();
+  const {
+    auth,
+    sidebarLinks,
+    isSupplier = false,
+    isRetailer = false,
+    isCurrentRole = false,
+  } = workspace || {};
+
+  const capitalizedAuthRole = auth?.role
+    ? auth.role.charAt(0).toUpperCase() + auth.role.slice(1)
+    : null;
+  const roleLabel =
+    copyOverrides.roleLabel || capitalizedAuthRole || defaultCopy.roleLabel;
+  const copy = useMemo(
+    () => ({
+      ...defaultCopy,
+      ...copyOverrides,
+      roleLabel,
+    }),
+    [copyOverrides, roleLabel]
+  );
+  const roleLower = roleLabel.toLowerCase();
+  const applyRole = useCallback(
+    (value) => {
+      if (typeof value !== "string") return value;
+      return value
+        .replace(/Supplier/g, roleLabel)
+        .replace(/supplier/g, roleLower);
+    },
+    [roleLabel, roleLower]
+  );
+
+  const forceSidebar =
+    typeof isCurrentRole === "boolean"
+      ? isCurrentRole
+      : Boolean(isSupplier || isRetailer);
+  const workspaceLabel = applyRole(copy.workspaceLabel || `${roleLabel} Hub`);
   const { contractAddress, googleMapsApiKey } = useConfig();
   const navigate = useNavigate();
 
@@ -73,8 +158,34 @@ const SupplierScanner = () => {
   const [geoError, setGeoError] = useState("");
   const [capturingLocation, setCapturingLocation] = useState(false);
 
+  const locationSnapshotRef = useRef({
+    coordinates: null,
+    locationString: null,
+    geoCountry: null,
+    geoCity: null,
+    locationSource: "pending",
+  });
+
+  const updateLocationSnapshot = useCallback((updates = {}) => {
+    const normalized = { ...locationSnapshotRef.current };
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === undefined) {
+        return;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        normalized[key] = trimmed.length ? trimmed : null;
+      } else {
+        normalized[key] = value;
+      }
+    });
+
+    locationSnapshotRef.current = normalized;
+  }, []);
+
   const username = auth?.user || auth?.username || "anonymous";
-  const role = auth?.role || "supplier";
+  const role = (auth?.role || roleLower || "supplier").toLowerCase();
 
   const handleCameraScan = useCallback((data) => {
     if (!data) return;
@@ -105,15 +216,17 @@ const SupplierScanner = () => {
         return;
       }
       setGeoError("");
+      updateLocationSnapshot({
+        coordinates: { latitude: lat, longitude: lon },
+      });
 
       if (googleMapsApiKey) {
         try {
           Geocode.setApiKey(googleMapsApiKey);
           const response = await Geocode.fromLatLng(lat, lon);
           const result = response?.results?.[0];
-          const address = result?.formatted_address;
+          const address = sanitizeName(result?.formatted_address);
           if (address) {
-            setResolvedLocation(address);
             const components = result?.address_components || [];
             const countryComponent = components.find((component) =>
               component.types?.includes("country")
@@ -128,9 +241,19 @@ const SupplierScanner = () => {
               components.find((component) =>
                 component.types?.includes("administrative_area_level_2")
               );
-            setGeoCountry(countryComponent?.long_name || "");
-            setGeoCity(localityComponent?.long_name || "");
+            const derivedCountry = sanitizeName(countryComponent?.long_name);
+            const derivedCity = sanitizeName(localityComponent?.long_name);
+
+            setResolvedLocation(address);
+            setGeoCountry(derivedCountry || "");
+            setGeoCity(derivedCity || "");
             setLocationSource("google");
+            updateLocationSnapshot({
+              locationString: address,
+              geoCountry: derivedCountry ?? null,
+              geoCity: derivedCity ?? null,
+              locationSource: "google",
+            });
             return;
           }
         } catch (error) {
@@ -145,43 +268,87 @@ const SupplierScanner = () => {
         const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
-          const descriptive = buildDescriptiveLocation(data);
+          const rawCountry =
+            sanitizeName(data.countryName) || sanitizeName(data.countryCode);
+          const rawCity =
+            sanitizeName(data.city) ||
+            sanitizeName(data.locality) ||
+            sanitizeName(data.principalSubdivision);
+          let descriptive = buildDescriptiveLocation(data);
+          if (!descriptive && (rawCity || rawCountry)) {
+            descriptive = [rawCity, rawCountry].filter(Boolean).join(", ");
+          }
+
           if (descriptive) {
             setResolvedLocation(descriptive);
-            setGeoCountry(data.countryName || data.countryCode || "");
-            setGeoCity(
-              data.city || data.locality || data.principalSubdivision || ""
-            );
+          }
+          if (rawCountry || descriptive) {
+            setGeoCountry(rawCountry || "");
+          }
+          if (rawCity || descriptive) {
+            setGeoCity(rawCity || "");
+          }
+          if (descriptive || rawCountry || rawCity) {
             setLocationSource("bigdatacloud");
-            return;
+            updateLocationSnapshot({
+              locationString:
+                descriptive || locationSnapshotRef.current.locationString,
+              geoCountry: rawCountry ?? locationSnapshotRef.current.geoCountry,
+              geoCity: rawCity ?? locationSnapshotRef.current.geoCity,
+              locationSource: "bigdatacloud",
+            });
+            if (descriptive) {
+              return;
+            }
           }
         }
       } catch (error) {
         console.warn("BigDataCloud reverse geocoding failed:", error);
       }
 
-      setResolvedLocation(`lat:${lat};lon:${lon}`);
-      setGeoCountry("");
-      setGeoCity("");
-      setLocationSource("coordinates");
+      const fallbackLocation = `lat:${lat};lon:${lon}`;
+      setResolvedLocation((current) => current || fallbackLocation);
+      setLocationSource((current) =>
+        current && current !== "pending" ? current : "coordinates"
+      );
+      if (!locationSnapshotRef.current.locationString) {
+        updateLocationSnapshot({
+          locationString: fallbackLocation,
+        });
+      }
+      if (!locationSnapshotRef.current.locationSource) {
+        updateLocationSnapshot({ locationSource: "coordinates" });
+      }
+      if (!locationSnapshotRef.current.geoCountry) {
+        setGeoCountry("");
+      }
+      if (!locationSnapshotRef.current.geoCity) {
+        setGeoCity("");
+      }
     },
-    [googleMapsApiKey]
+    [googleMapsApiKey, updateLocationSnapshot]
   );
 
   const captureLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setGeoError("Geolocation is not supported by this browser.");
       setLocationSource("unsupported");
+      updateLocationSnapshot({ locationSource: "unsupported" });
       return;
     }
 
     setGeoError("");
     setLocationSource("pending");
+    updateLocationSnapshot({ locationSource: "pending" });
     setCapturingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         setCoordinates({ latitude, longitude });
+        updateLocationSnapshot({
+          coordinates: { latitude, longitude },
+          locationSource: "gps",
+        });
         setCapturingLocation(false);
         setLocationSource("gps");
         resolveLocationFromCoordinates(latitude, longitude);
@@ -194,6 +361,7 @@ const SupplierScanner = () => {
             "Unable to access device location. Enable permissions and retry."
         );
         setLocationSource("denied");
+        updateLocationSnapshot({ locationSource: "denied" });
       },
       {
         enableHighAccuracy: true,
@@ -201,7 +369,7 @@ const SupplierScanner = () => {
         maximumAge: 0,
       }
     );
-  }, [resolveLocationFromCoordinates]);
+  }, [resolveLocationFromCoordinates, updateLocationSnapshot]);
 
   useEffect(() => {
     captureLocation();
@@ -235,40 +403,73 @@ const SupplierScanner = () => {
       setVerifying(true);
       setVerifyError(null);
       setNextStep(null);
+      const snapshot = locationSnapshotRef.current || {};
       const coordsSnapshot = coordinates
         ? {
             latitude: coordinates.latitude,
             longitude: coordinates.longitude,
           }
+        : snapshot.coordinates
+        ? {
+            latitude: snapshot.coordinates.latitude,
+            longitude: snapshot.coordinates.longitude,
+          }
         : null;
-      const locationString = resolvedLocation
-        ? resolvedLocation
-        : coordsSnapshot
-        ? `lat:${coordsSnapshot.latitude};lon:${coordsSnapshot.longitude}`
-        : null;
-      const locationDisplay = resolvedLocation
-        ? resolvedLocation
-        : coordsSnapshot
-        ? `lat:${coordsSnapshot.latitude.toFixed(
-            4
-          )}, lon:${coordsSnapshot.longitude.toFixed(4)}`
-        : geoError || "";
+      const primaryLocationString =
+        sanitizeName(resolvedLocation) ||
+        sanitizeName(snapshot.locationString) ||
+        (coordsSnapshot
+          ? `lat:${coordsSnapshot.latitude};lon:${coordsSnapshot.longitude}`
+          : null);
+      const locationDisplay =
+        primaryLocationString ||
+        (coordsSnapshot
+          ? `lat:${coordsSnapshot.latitude.toFixed(
+              4
+            )}, lon:${coordsSnapshot.longitude.toFixed(4)}`
+          : geoError || "");
+      const fallbackCityCountry = inferCityCountryFromLocationString(
+        primaryLocationString || snapshot.locationString || ""
+      );
+      const geoCountryValue =
+        sanitizeName(geoCountry) ||
+        sanitizeName(snapshot.geoCountry) ||
+        fallbackCityCountry.country ||
+        null;
+      const geoCityValue =
+        sanitizeName(geoCity) ||
+        sanitizeName(snapshot.geoCity) ||
+        fallbackCityCountry.city ||
+        null;
+      const effectiveLocationSource =
+        locationSource && locationSource !== "pending"
+          ? locationSource
+          : snapshot.locationSource || null;
+
+      updateLocationSnapshot({
+        locationString: primaryLocationString ?? undefined,
+        geoCountry: geoCountryValue ?? undefined,
+        geoCity: geoCityValue ?? undefined,
+        coordinates: coordsSnapshot ?? undefined,
+        locationSource: effectiveLocationSource ?? undefined,
+      });
+
       const locationContext = {
-        locationString,
+        locationString: primaryLocationString,
         locationDisplay,
-        locationSource,
-        geoCountry: geoCountry || null,
-        geoCity: geoCity || null,
+        locationSource: effectiveLocationSource,
+        geoCountry: geoCountryValue,
+        geoCity: geoCityValue,
       };
       try {
         const response = await axios.post("/verification/scan", {
           qrData: payload,
           username,
-          location: locationString,
+          location: locationContext.locationString,
           coordinates: coordsSnapshot,
           geoCountry: locationContext.geoCountry,
           geoCity: locationContext.geoCity,
-          locationSource,
+          locationSource: locationContext.locationSource,
         });
         const { isAuthentic, isSuspicious } = response.data || {};
         const outcome = {
@@ -343,6 +544,7 @@ const SupplierScanner = () => {
       locationSource,
       resolvedLocation,
       role,
+      updateLocationSnapshot,
       username,
     ]
   );
@@ -403,12 +605,12 @@ const SupplierScanner = () => {
 
   return (
     <AdminShell
-      title="Supplier Scanner"
-      subtitle="Verify shipments, capture QR evidence, and step through product updates in one flow."
+      title={applyRole(copy.shellTitle)}
+      subtitle={applyRole(copy.shellSubtitle)}
       meta={metaSummary}
-      forceSidebar={isSupplier}
+      forceSidebar={forceSidebar}
       sidebarLinks={sidebarLinks}
-      workspaceLabel={isSupplier ? "Supplier Hub" : undefined}
+      workspaceLabel={forceSidebar ? workspaceLabel : undefined}
       showHeaderNotifications={false}
     >
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8">

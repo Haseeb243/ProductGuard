@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import AdminShell from "../admin/AdminShell";
 import {
   GlassCard,
@@ -9,16 +9,67 @@ import {
 import useSupplierWorkspace from "../../hooks/useSupplierWorkspace";
 import { truncateAddress } from "../../utils/wallet";
 
-const SupplierWallet = () => {
+const defaultCopy = {
+  roleLabel: "Supplier",
+  workspaceLabel: "Supplier Hub",
+  title: "Supplier Wallet",
+  subtitle:
+    "Link MetaMask to register custody updates and sync with on-chain provenance.",
+  connectSubtitle:
+    "Authorize MetaMask so ProductGuard can trace supplier custody and verification events on-chain.",
+  connectedSubtitle:
+    "Your custody updates will appear in transparency dashboards. Keep MetaMask unlocked when pushing updates.",
+  whyLinkSubtitle:
+    "ProductGuard records supplier custody on-chain to power transparency experiences.",
+};
+
+const SupplierWallet = ({
+  workspaceHook = useSupplierWorkspace,
+  copy: copyOverrides = {},
+} = {}) => {
+  const resolvedHook = workspaceHook || useSupplierWorkspace;
+  const workspace = resolvedHook();
   const {
     auth,
     sidebarLinks,
-    isSupplier,
     walletAddress,
     checkingWallet,
     connectWallet,
     disconnectWallet,
-  } = useSupplierWorkspace();
+    isSupplier = false,
+    isRetailer = false,
+    isCurrentRole = false,
+  } = workspace || {};
+
+  const capitalizedAuthRole = auth?.role
+    ? auth.role.charAt(0).toUpperCase() + auth.role.slice(1)
+    : null;
+  const roleLabel =
+    copyOverrides.roleLabel || capitalizedAuthRole || defaultCopy.roleLabel;
+  const copy = useMemo(
+    () => ({
+      ...defaultCopy,
+      ...copyOverrides,
+      roleLabel,
+    }),
+    [copyOverrides, roleLabel]
+  );
+  const roleLower = roleLabel.toLowerCase();
+  const applyRole = useCallback(
+    (value) => {
+      if (typeof value !== "string") return value;
+      return value
+        .replace(/Supplier/g, roleLabel)
+        .replace(/supplier/g, roleLower);
+    },
+    [roleLabel, roleLower]
+  );
+
+  const forceSidebar =
+    typeof isCurrentRole === "boolean"
+      ? isCurrentRole
+      : Boolean(isSupplier || isRetailer);
+  const workspaceLabel = applyRole(copy.workspaceLabel || `${roleLabel} Hub`);
 
   const metaSummary = useMemo(() => {
     return [
@@ -56,12 +107,12 @@ const SupplierWallet = () => {
 
   return (
     <AdminShell
-      title="Supplier Wallet"
-      subtitle="Link MetaMask to register custody updates and sync with on-chain provenance."
+      title={applyRole(copy.title)}
+      subtitle={applyRole(copy.subtitle)}
       meta={metaSummary}
-      forceSidebar={isSupplier}
+      forceSidebar={forceSidebar}
       sidebarLinks={sidebarLinks}
-      workspaceLabel={isSupplier ? "Supplier Hub" : undefined}
+      workspaceLabel={forceSidebar ? workspaceLabel : undefined}
       showHeaderNotifications={false}
       showHeaderProfile={false}
     >
@@ -71,8 +122,8 @@ const SupplierWallet = () => {
             title={walletAddress ? "Wallet connected" : "Connect your wallet"}
             subtitle={
               walletAddress
-                ? "Your custody updates will appear in transparency dashboards. Keep MetaMask unlocked when pushing updates."
-                : "Authorize MetaMask so ProductGuard can trace supplier custody and verification events on-chain."
+                ? applyRole(copy.connectedSubtitle)
+                : applyRole(copy.connectSubtitle)
             }
           />
           <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
@@ -108,8 +159,8 @@ const SupplierWallet = () => {
         <GradientBorderCard>
           <div className="space-y-6">
             <SectionHeader
-              title="Why link your wallet?"
-              subtitle="ProductGuard records supplier custody on-chain to power transparency experiences."
+              title={applyRole("Why link your wallet?")}
+              subtitle={applyRole(copy.whyLinkSubtitle)}
             />
             <div className="grid gap-5 md:grid-cols-2">
               <div className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-white/70">

@@ -1162,7 +1162,7 @@ function logProductScan(
                  ORDER BY al.log_time DESC LIMIT 1
                )
                WHERE p.serialnumber = $1`,
-              [serialNumber]
+              [serialNumberForStorage]
             );
 
             if (productResult.rows.length > 0 && productResult.rows[0].email) {
@@ -1795,15 +1795,80 @@ const verifyScanSchema = Joi.object({
   locationSource: Joi.string().allow(null, ""),
 });
 
+const sanitizeLocationToken = (token) => {
+  if (token === null || token === undefined) {
+    return null;
+  }
+  const trimmed = String(token).trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^lat:/i.test(trimmed) || /^lon:/i.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+};
+
+function inferGeoFromLocationString(locationString) {
+  if (!locationString || typeof locationString !== "string") {
+    return { city: null, country: null };
+  }
+
+  const tokens = locationString
+    .split(",")
+    .map((part) => sanitizeLocationToken(part))
+    .filter(Boolean);
+
+  if (!tokens.length) {
+    return { city: null, country: null };
+  }
+
+  const country = tokens[tokens.length - 1] || null;
+  let city = null;
+  for (let idx = tokens.length - 2; idx >= 0; idx -= 1) {
+    const candidate = tokens[idx];
+    if (candidate) {
+      city = candidate;
+      break;
+    }
+  }
+
+  return { city, country };
+}
+
+const normalizeOptionalString = (value, fallback = null) => {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : fallback;
+};
+
 app.post("/verification/scan", async (req, res) => {
   try {
     // Validate input
-    const { value, error } = verifyScanSchema.validate(req.body || {}, {
+    const rawBody = req.body || {};
+    const { value, error } = verifyScanSchema.validate(rawBody, {
       abortEarly: false,
       stripUnknown: true,
     });
+    let validationIssue = null;
+    let payload = value;
     if (error) {
-      return res.status(400).json({ success: false, message: error.message });
+      validationIssue = error.message;
+      console.warn(
+        "verification/scan validation fallback",
+        validationIssue,
+        error?.details || []
+      );
+      payload = {
+        qrData: normalizeOptionalString(rawBody.qrData, ""),
+        username: normalizeOptionalString(rawBody.username, "anonymous"),
+        location: normalizeOptionalString(rawBody.location, null),
+        coordinates: null,
+        geoCountry: normalizeOptionalString(rawBody.geoCountry, null),
+        geoCity: normalizeOptionalString(rawBody.geoCity, null),
+      };
     }
 
     const {
@@ -1813,28 +1878,25 @@ app.post("/verification/scan", async (req, res) => {
       coordinates,
       geoCountry: geoCountryFromClient,
       geoCity: geoCityFromClient,
-    } = value;
+    } = payload;
     const ipAddress = getClientIp(req);
     const userAgent = req.get("User-Agent");
     const ipGeo = resolveGeo(ipAddress);
-    const finalGeoCountry =
-      geoCountryFromClient && geoCountryFromClient.trim().length
-        ? geoCountryFromClient.trim()
-        : ipGeo.country;
-    const finalGeoCity =
-      geoCityFromClient && geoCityFromClient.trim().length
-        ? geoCityFromClient.trim()
-        : ipGeo.city;
 
-    // Parse QR payload
-    const parts = String(qrData).split(",");
-    if (parts.length < 2) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid QR payload" });
-    }
-    const qrContract = parts[0];
-    const serialNumber = parts[1];
+    // Parse QR payload (allowing invalid data to be logged as suspicious)
+    const rawPayload = String(qrData || "");
+    const parts = rawPayload.split(",");
+    const qrContract = parts.length ? parts[0].trim() || null : null;
+    const parsedSerial =
+      parts.length > 1 ? parts.slice(1).join(",").trim() || null : null;
+    const hasValidSerial = Boolean(parsedSerial && parsedSerial.length);
+    const serialNumber = hasValidSerial ? parsedSerial : null;
+    const fallbackSerialCandidate = rawPayload.slice(0, 255).trim();
+    const serialNumberForStorage = hasValidSerial
+      ? parsedSerial
+      : fallbackSerialCandidate.length
+      ? fallbackSerialCandidate
+      : "[invalid-qr]";
 
     let locationToPersist = location;
     if (!locationToPersist && coordinates?.latitude && coordinates?.longitude) {
@@ -1847,11 +1909,22 @@ app.post("/verification/scan", async (req, res) => {
       }
     }
 
+    const inferredGeo = inferGeoFromLocationString(locationToPersist);
+    const finalGeoCountry =
+      geoCountryFromClient && geoCountryFromClient.trim().length
+        ? geoCountryFromClient.trim()
+        : inferredGeo.country || ipGeo.country;
+    const finalGeoCity =
+      geoCityFromClient && geoCityFromClient.trim().length
+        ? geoCityFromClient.trim()
+        : inferredGeo.city || ipGeo.city;
+
     // Determine authenticity by contract matching; optionally verify product existence in DB
     const expectedContract = process.env.CONTRACT_ADDRESS || null;
-    const isAuthentic = expectedContract
-      ? qrContract === expectedContract
-      : true; // if env not set, don’t auto-fail
+    let isAuthentic = expectedContract ? qrContract === expectedContract : true; // if env not set, don’t auto-fail
+    if (!hasValidSerial) {
+      isAuthentic = false;
+    }
 
     // Log the scan immediately
     const insertResult = await client.query(
@@ -1868,7 +1941,7 @@ app.post("/verification/scan", async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
-        serialNumber,
+        serialNumberForStorage,
         username || "anonymous",
         locationToPersist || null,
         isAuthentic,
@@ -1881,7 +1954,7 @@ app.post("/verification/scan", async (req, res) => {
     const insertedScanId = insertResult?.rows?.[0]?.id || null;
 
     // Evaluate duplicate suspicion window
-    const dup = await computeDuplicateSuspicion(serialNumber);
+    const dup = await computeDuplicateSuspicion(serialNumberForStorage);
     let isSuspicious = dup.isSuspicious || false;
     let suspicionReason = dup.reason || null;
 
@@ -1889,6 +1962,18 @@ app.post("/verification/scan", async (req, res) => {
     if (!isAuthentic) {
       isSuspicious = true;
       suspicionReason = suspicionReason || "Contract address mismatch";
+    }
+
+    if (!hasValidSerial) {
+      isSuspicious = true;
+      suspicionReason = "Invalid QR payload format";
+    }
+
+    if (validationIssue) {
+      isSuspicious = true;
+      suspicionReason = suspicionReason
+        ? `${suspicionReason}; Validation: ${validationIssue}`
+        : `Validation error: ${validationIssue}`;
     }
 
     // Update the last inserted scan row to set suspicion fields
@@ -1907,7 +1992,7 @@ app.post("/verification/scan", async (req, res) => {
     logActivity(
       username || "anonymous",
       "product_verification_scan",
-      serialNumber,
+      serialNumber || serialNumberForStorage,
       `Verification scan - Authentic: ${isAuthentic}, Suspicious: ${isSuspicious}`
     );
 
@@ -1923,13 +2008,13 @@ app.post("/verification/scan", async (req, res) => {
              ORDER BY al.log_time DESC LIMIT 1
            )
            WHERE p.serialnumber = $1`,
-          [serialNumber]
+          [serialNumber || serialNumberForStorage]
         );
         if (productResult.rows.length > 0 && productResult.rows[0].email) {
           const product = productResult.rows[0];
           await emailService.sendSuspiciousScanEmail(client, product.email, {
             productName: product.product_name,
-            serialNumber,
+            serialNumber: serialNumber || serialNumberForStorage,
             scanTime: new Date(),
             suspicionReason: suspicionReason || "Duplicate scan pattern",
             ipAddress,
@@ -2146,6 +2231,92 @@ app.get("/manufacturer/products-summary", async (req, res) => {
   }
 });
 
+const buildSupplyScanSummary = async ({
+  username,
+  days,
+  limit,
+  locationLimit,
+}) => {
+  const totalsQuery = await client.query(
+    `SELECT
+       COUNT(*)::int AS total_all_time,
+       COUNT(DISTINCT serial_number)::int AS unique_all_time,
+       MAX(scan_time) AS last_scan_at
+     FROM product_scans
+     WHERE username = $1`,
+    [username]
+  );
+
+  const recentQuery = await client.query(
+    `SELECT
+       COUNT(*)::int AS total_recent,
+       COUNT(DISTINCT serial_number)::int AS unique_recent,
+       COUNT(*) FILTER (WHERE is_authentic)::int AS authentic_recent,
+       COUNT(*) FILTER (WHERE is_suspicious)::int AS suspicious_recent
+     FROM product_scans
+     WHERE username = $1
+       AND scan_time >= NOW() - ($2::int * INTERVAL '1 day')`,
+    [username, days]
+  );
+
+  const recentScansQuery = await client.query(
+    `SELECT
+       id,
+       serial_number,
+       scan_time,
+       location,
+       is_authentic,
+       is_suspicious,
+       suspicion_reason
+     FROM product_scans
+     WHERE username = $1
+     ORDER BY scan_time DESC
+     LIMIT $2`,
+    [username, limit]
+  );
+
+  const topLocationsQuery = await client.query(
+    `SELECT
+       COALESCE(NULLIF(TRIM(location), ''), 'Unknown') AS location,
+       COUNT(*)::int AS count
+     FROM product_scans
+     WHERE username = $1
+       AND scan_time >= NOW() - ($2::int * INTERVAL '1 day')
+       AND location IS NOT NULL
+       AND TRIM(location) <> ''
+     GROUP BY location
+     ORDER BY count DESC
+     LIMIT $3`,
+    [username, days, locationLimit]
+  );
+
+  const totals = totalsQuery.rows?.[0] || {};
+  const recent = recentQuery.rows?.[0] || {};
+
+  return {
+    totalAllTime: totals.total_all_time || 0,
+    uniqueAllTime: totals.unique_all_time || 0,
+    lastScanAt: totals.last_scan_at || null,
+    totalRecent: recent.total_recent || 0,
+    uniqueRecent: recent.unique_recent || 0,
+    authenticRecent: recent.authentic_recent || 0,
+    suspiciousRecent: recent.suspicious_recent || 0,
+    recentScans: recentScansQuery.rows.map((row) => ({
+      id: row.id,
+      serialNumber: row.serial_number,
+      scanTime: row.scan_time,
+      location: row.location,
+      isAuthentic: row.is_authentic,
+      isSuspicious: row.is_suspicious,
+      suspicionReason: row.suspicion_reason || null,
+    })),
+    topLocations: topLocationsQuery.rows.map((row) => ({
+      location: row.location || "Unknown",
+      count: row.count || 0,
+    })),
+  };
+};
+
 app.get("/supplier/scans-summary", async (req, res) => {
   try {
     const username = (req.query.username || "").trim();
@@ -2177,91 +2348,75 @@ app.get("/supplier/scans-summary", async (req, res) => {
       10
     );
 
-    const totalsQuery = await client.query(
-      `SELECT
-         COUNT(*)::int AS total_all_time,
-         COUNT(DISTINCT serial_number)::int AS unique_all_time,
-         MAX(scan_time) AS last_scan_at
-       FROM product_scans
-       WHERE username = $1`,
-      [username]
-    );
-
-    const recentQuery = await client.query(
-      `SELECT
-         COUNT(*)::int AS total_recent,
-         COUNT(DISTINCT serial_number)::int AS unique_recent,
-         COUNT(*) FILTER (WHERE is_authentic)::int AS authentic_recent,
-         COUNT(*) FILTER (WHERE is_suspicious)::int AS suspicious_recent
-       FROM product_scans
-       WHERE username = $1
-         AND scan_time >= NOW() - INTERVAL '${days} days'`,
-      [username]
-    );
-
-    const recentScansQuery = await client.query(
-      `SELECT
-         id,
-         serial_number,
-         scan_time,
-         location,
-         is_authentic,
-         is_suspicious,
-         suspicion_reason
-       FROM product_scans
-       WHERE username = $1
-       ORDER BY scan_time DESC
-       LIMIT $2`,
-      [username, limit]
-    );
-
-    const topLocationsQuery = await client.query(
-      `SELECT
-         COALESCE(NULLIF(TRIM(location), ''), 'Unknown') AS location,
-         COUNT(*)::int AS count
-       FROM product_scans
-       WHERE username = $1
-         AND scan_time >= NOW() - INTERVAL '${days} days'
-         AND location IS NOT NULL
-         AND TRIM(location) <> ''
-       GROUP BY location
-       ORDER BY count DESC
-       LIMIT $2`,
-      [username, locationLimit]
-    );
-
-    const totals = totalsQuery.rows?.[0] || {};
-    const recent = recentQuery.rows?.[0] || {};
+    const summary = await buildSupplyScanSummary({
+      username,
+      days,
+      limit,
+      locationLimit,
+    });
 
     return res.json({
       success: true,
       username,
-      totalAllTime: totals.total_all_time || 0,
-      uniqueAllTime: totals.unique_all_time || 0,
-      lastScanAt: totals.last_scan_at || null,
-      totalRecent: recent.total_recent || 0,
-      uniqueRecent: recent.unique_recent || 0,
-      authenticRecent: recent.authentic_recent || 0,
-      suspiciousRecent: recent.suspicious_recent || 0,
-      recentScans: recentScansQuery.rows.map((row) => ({
-        id: row.id,
-        serialNumber: row.serial_number,
-        scanTime: row.scan_time,
-        location: row.location,
-        isAuthentic: row.is_authentic,
-        isSuspicious: row.is_suspicious,
-        suspicionReason: row.suspicion_reason || null,
-      })),
-      topLocations: topLocationsQuery.rows.map((row) => ({
-        location: row.location || "Unknown",
-        count: row.count || 0,
-      })),
+      ...summary,
     });
   } catch (err) {
     console.error("/supplier/scans-summary error:", err);
     return res.status(500).json({
       success: false,
       message: "Failed to load supplier scan summary",
+    });
+  }
+});
+
+app.get("/retailer/scans-summary", async (req, res) => {
+  try {
+    const username = (req.query.username || "").trim();
+    const daysParam = parseInt(req.query.days, 10);
+    const limitParam = parseInt(req.query.limit, 10);
+    const locationLimitParam = parseInt(req.query.locationLimit, 10);
+
+    if (!username) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Username is required" });
+    }
+
+    const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : 30;
+    const limit = Math.min(
+      Math.max(
+        Number.isFinite(limitParam) && limitParam > 0 ? limitParam : 10,
+        1
+      ),
+      50
+    );
+    const locationLimit = Math.min(
+      Math.max(
+        Number.isFinite(locationLimitParam) && locationLimitParam > 0
+          ? locationLimitParam
+          : 5,
+        1
+      ),
+      10
+    );
+
+    const summary = await buildSupplyScanSummary({
+      username,
+      days,
+      limit,
+      locationLimit,
+    });
+
+    return res.json({
+      success: true,
+      username,
+      ...summary,
+    });
+  } catch (err) {
+    console.error("/retailer/scans-summary error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load retailer scan summary",
     });
   }
 });
