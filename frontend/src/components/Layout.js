@@ -11,11 +11,7 @@ const Layout = () => {
       <div className="w-full px-0 py-0">
         <Outlet />
       </div>
-      {/* Show customer support for authenticated users (supports auth.user or auth.username) */}
-      {(auth?.username || auth?.user) &&
-        !["manufacturer", "supplier"].includes(auth?.role) && (
-          <CustomerSupport user={auth} />
-        )}
+      {/* CustomerSupport floating chat overlay removed */}
     </main>
   );
 };

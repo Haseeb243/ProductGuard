@@ -1,5 +1,18 @@
 {
   "dependencies": {
     "react-qr-scanner": "^1.0.0-alpha.11"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "wait-on": "^9.0.1"
+  },
+  "scripts": {
+    "blockchain:install": "cd Blockchain && npm install",
+    "blockchain:node": "cd Blockchain && npx hardhat node",
+    "blockchain:deploy": "cd Blockchain && npx hardhat run scripts/deploy.js --network localhost",
+    "backend": "cd backend && npm start",
+    "frontend": "cd frontend && npm start",
+    "start": "npm run blockchain:install && concurrently --kill-others-on-fail -n backend,frontend,blockchainNode,blockchainDeploy -c magenta,cyan,green,blue \"npm run backend\" \"npm run frontend\" \"npm run blockchain:node\" \"wait-on tcp:8545 && npm run blockchain:deploy\""
   }
 }
