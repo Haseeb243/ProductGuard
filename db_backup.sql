@@ -842,13 +842,17 @@ COPY public.activity_log (id, username, action, target, details, log_time, metad
 -- Dependencies: 218
 -- Data for Name: auth; Type: TABLE DATA; Schema: public; Owner: postgres
 --
+-- SECURITY NOTE: Password hashes below are PLACEHOLDERS (XXXXXXXXXXX...).
+-- You must create real user accounts with secure passwords after importing this dump.
+-- Use bcrypt to hash passwords. See README.md for setup instructions.
+--
 
 COPY public.auth (username, password, id, role, email, created_at, last_login, is_2fa_enabled, two_factor_secret) FROM stdin;
-admin	$2b$10$EXAMPLE_HASH_REPLACE_WITH_REAL_PASSWORD	1	admin	admin@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:50:59.058581+05	f	\N
-supplier	$2b$10$EXAMPLE_HASH_REPLACE_WITH_REAL_PASSWORD	3	supplier	supplier@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:54:58.720626+05	f	\N
-manufacturer	$2b$10$EXAMPLE_HASH_REPLACE_WITH_REAL_PASSWORD	7	manufacturer	manufacturer@example.com	2025-09-28 04:18:10.284367+05	2025-09-28 04:18:45.564222+05	f	\N
-manufacturer_test	$2b$10$EXAMPLE_HASH_REPLACE_WITH_REAL_PASSWORD	8	manufacturer	manufacturer_test@example.com	2025-10-03 01:37:46.476035+05	\N	f	\N
-retailer	$2b$10$EXAMPLE_HASH_REPLACE_WITH_REAL_PASSWORD	56	retailer	retailer@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:24:13.926603+05	f	\N
+admin	$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX	1	admin	admin@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:50:59.058581+05	f	\N
+supplier	$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX	3	supplier	supplier@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:54:58.720626+05	f	\N
+manufacturer	$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX	7	manufacturer	manufacturer@example.com	2025-09-28 04:18:10.284367+05	2025-09-28 04:18:45.564222+05	f	\N
+manufacturer_test	$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX	8	manufacturer	manufacturer_test@example.com	2025-10-03 01:37:46.476035+05	\N	f	\N
+retailer	$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX	56	retailer	retailer@example.com	2025-09-23 22:01:49.390002+05	2025-10-04 03:24:13.926603+05	f	\N
 \.
 
 

@@ -35,4 +35,3 @@ db_backup_*.sql
 # Temporary files
 *.tmp
 *.bak
-.DS_Store
