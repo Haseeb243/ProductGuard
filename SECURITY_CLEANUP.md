@@ -14,7 +14,7 @@ This document describes the security improvements made to remove sensitive infor
 **File**: `db_backup.sql`
 
 Removed sensitive data from the SQL dump:
-- **Password Hashes**: Replaced all 6 real bcrypt hashes with placeholder `$2b$10$EXAMPLE_HASH_REPLACE_WITH_REAL_PASSWORD`
+- **Password Hashes**: Replaced all 6 real bcrypt hashes with 60-character placeholder `$2b$10$XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
 - **Real Email Addresses**: Removed personal email addresses (haseebahmad8985@gmail.com, haseebahmad8986@gmail.com, aizazalikhan817@gmail.com)
 - **2FA Secrets**: Removed the exposed 2FA secret (`HY7VI4TTMZXFO5SIKUZG6I3WLZKHQKR3LAYSUVDNLVCTKLSDOMYA`)
 - **Password Reset Tokens**: Cleared all password reset tokens (previously had 4 tokens with real email addresses)
@@ -91,14 +91,14 @@ To verify no sensitive information remains:
 # Check for real email patterns
 grep -r "haseebahmad\|aizazali" . --exclude-dir=node_modules --exclude-dir=.git
 
-# Check for real bcrypt hashes (should only find EXAMPLE_HASH)
-grep -r "\$2b\$10\$[^E]" db_backup.sql
+# Check for real bcrypt hashes (should only find placeholder XXX hashes)
+grep "\$2b\$10\$[^X]" db_backup.sql
 
 # Check for hardcoded secrets in code
 grep -r "your-secret-key-change-in-production" backend/
 ```
 
-All checks should return no results (or only EXAMPLE_HASH for the second check).
+All checks should return no results (or only the XXX placeholder pattern for the second check).
 
 ## Compliance
 
