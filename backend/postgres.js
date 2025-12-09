@@ -58,8 +58,12 @@ app.use(
 const port = process.env.PORT || 5000;
 
 // JWT Configuration
-const JWT_SECRET =
-  process.env.JWT_SECRET || "your-secret-key-change-in-production";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET environment variable is not set!");
+  console.error("Please set JWT_SECRET in your .env file before starting the server.");
+  process.exit(1);
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "24h";
 
 // Rate limiting configuration

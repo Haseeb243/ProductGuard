@@ -144,6 +144,21 @@ PGPASSWORD=your_secret_password
 PGDATABASE=postgres
 PGPORT=5432
 CORS_ORIGINS=http://localhost:3000
+
+# REQUIRED: JWT Secret for authentication
+# Generate a secure key using: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+JWT_SECRET=your_secure_jwt_secret_here_minimum_32_characters
+JWT_EXPIRES_IN=24h
+
+# Email Configuration (Optional)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+FROM_EMAIL=your-email@gmail.com
+FROM_NAME=ProductGuard Support
+ENABLE_EMAIL_NOTIFICATIONS=true
 ```
 
 Frontend (`frontend/.env`):
@@ -156,6 +171,7 @@ REACT_APP_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY_HERE
 
 Notes:
 
+- **CRITICAL**: `JWT_SECRET` is required for the backend to start. Generate a secure random key using the command shown above.
 - The Google Maps key is used for reverse geocoding; you may omit it for local demos.
 - The contract address should match your deployed contract on local Hardhat or a network.
 
@@ -234,8 +250,14 @@ Identeefi address: 0xABCDEF...
 
 ## Security notes
 
-- Secrets and host URLs are managed via `.env` files and not hardcoded in source.
-- Frontend env values are public by nature; restrict API keys at the provider level (domain, API, quotas) or proxy via backend when possible.
+- **All secrets must be managed via `.env` files** - never commit `.env` files to version control
+- **JWT_SECRET**: The backend requires a secure JWT_SECRET environment variable. Generate one using: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+- **Password Security**: All passwords are hashed using bcrypt before storage
+- **Database Credentials**: Never use default passwords in production. Update PGPASSWORD in your `.env` file
+- **SQL Injection Protection**: All database queries use parameterized statements
+- **Email Credentials**: For Gmail SMTP, use App Passwords instead of your regular password
+- Frontend env values (REACT_APP_*) are public by nature; restrict API keys at the provider level (domain, API, quotas) or proxy via backend when possible
+- The sample `db_backup.sql` contains sanitized/example data only - you must create your own admin accounts with secure passwords
 
 ## License
 
