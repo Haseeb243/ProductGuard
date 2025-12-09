@@ -6,6 +6,7 @@ import {
   SupportIcon,
   ShieldIcon,
   PulseIcon,
+  InventoryIcon,
 } from "../admin/navigation";
 import { WalletIcon } from "./manufacturerNav";
 
@@ -44,6 +45,12 @@ export const buildSupplierSidebarLinks = ({
       label: "Transparency",
       to: "/transparency",
       tone: "cyan",
+    },
+    {
+      icon: InventoryIcon,
+      label: "Inventory",
+      to: "/supplier/inventory",
+      tone: "purple",
     },
     {
       icon: SupportIcon,

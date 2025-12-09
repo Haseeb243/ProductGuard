@@ -4,7 +4,12 @@ import { toast } from "react-toastify";
 import { Link, useNavigate } from "react-router-dom";
 import { useConfig } from "../../context/ConfigContext";
 import AdminShell from "../admin/AdminShell";
-import { GlassCard, glassButtonClass } from "../admin/ui";
+import {
+  GlassCard,
+  glassButtonClass,
+  glassSelectClass,
+  glassInputClass,
+} from "../admin/ui";
 
 const ROLE_OPTIONS = [
   { value: "manufacturer", label: "Manufacturer" },
@@ -34,6 +39,9 @@ const AddAccount = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef(null);
+
+  const textFieldClass = `${glassInputClass} w-full px-4 py-2.5 text-sm`;
+  const textAreaClass = `${glassInputClass} w-full px-4 py-3 text-sm min-h-[120px]`;
 
   const metaSummary = useMemo(
     () => [
@@ -221,7 +229,7 @@ const AddAccount = () => {
                     type="text"
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
-                    className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                    className={textFieldClass}
                     placeholder="e.g. partner.ops"
                     required
                   />
@@ -235,7 +243,7 @@ const AddAccount = () => {
                       type="password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
-                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                      className={textFieldClass}
                       required
                     />
                   </label>
@@ -249,7 +257,7 @@ const AddAccount = () => {
                       onChange={(event) =>
                         setConfirmPassword(event.target.value)
                       }
-                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                      className={textFieldClass}
                       required
                     />
                   </label>
@@ -262,7 +270,7 @@ const AddAccount = () => {
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                    className={textFieldClass}
                     placeholder="name@partner.com"
                     required
                   />
@@ -275,7 +283,7 @@ const AddAccount = () => {
                     <select
                       value={role}
                       onChange={(event) => setRole(event.target.value)}
-                      className="w-full appearance-none rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 pr-10 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                      className={`${glassSelectClass} w-full rounded-2xl px-4 py-2.5 pr-10`}
                     >
                       {ROLE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -313,7 +321,7 @@ const AddAccount = () => {
                     type="text"
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
-                    className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                    className={textFieldClass}
                     placeholder="Acme Manufacturing"
                   />
                 </label>
@@ -324,7 +332,7 @@ const AddAccount = () => {
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
-                    className="min-h-[120px] w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                    className={textAreaClass}
                     placeholder="Brief summary of the partner and their focus"
                   />
                 </label>
@@ -337,7 +345,7 @@ const AddAccount = () => {
                       type="text"
                       value={website}
                       onChange={(event) => setWebsite(event.target.value)}
-                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                      className={textFieldClass}
                       placeholder="https://partner.com"
                     />
                   </label>
@@ -349,7 +357,7 @@ const AddAccount = () => {
                       type="text"
                       value={location}
                       onChange={(event) => setLocation(event.target.value)}
-                      className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-2.5 text-sm text-white/80 focus:border-white/40 focus:outline-none"
+                      className={textFieldClass}
                       placeholder="Singapore, SG"
                     />
                   </label>

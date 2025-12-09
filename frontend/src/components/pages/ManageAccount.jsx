@@ -4,7 +4,12 @@ import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useConfig } from "../../context/ConfigContext";
 import AdminShell from "../admin/AdminShell";
-import { GlassCard, glassButtonClass } from "../admin/ui";
+import {
+  GlassCard,
+  glassButtonClass,
+  glassSelectClass,
+  glassInputClass,
+} from "../admin/ui";
 
 const ROLE_FILTERS = [
   { value: "all", label: "All accounts" },
@@ -26,8 +31,7 @@ const columns = [
   { field: "role", headerName: "Role" },
 ];
 
-const inputClasses =
-  "w-full rounded-2xl border border-white/12 bg-white/6 px-4 py-2.5 text-sm text-white/80 placeholder-white/35 transition focus:border-white/40 focus:outline-none focus:ring-0";
+const inputClasses = `${glassInputClass} w-full px-4 py-2.5 text-sm`;
 
 const chipClasses =
   "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/8 px-3 py-1 text-xs font-semibold text-white/70";
@@ -643,7 +647,7 @@ const EditAccountModal = ({
           <select
             value={account.role}
             onChange={(event) => onFieldChange("role", event.target.value)}
-            className={`${inputClasses} bg-white/10`}
+            className={`${glassSelectClass} w-full rounded-2xl px-4 py-2.5`}
           >
             <option value="">Select role</option>
             <option value="manufacturer">Manufacturer</option>

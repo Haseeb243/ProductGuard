@@ -5,6 +5,7 @@ import {
   TransparencyIcon,
   SupportIcon,
   ShieldIcon,
+  InventoryIcon,
 } from "../admin/navigation";
 
 export const WalletIcon = ({ className = "h-5 w-5 flex-none" }) => (
@@ -59,6 +60,12 @@ export const buildManufacturerSidebarLinks = ({
       label: "Transparency",
       to: "/transparency",
       tone: "cyan",
+    },
+    {
+      icon: InventoryIcon,
+      label: "Inventory",
+      to: "/manufacturer/inventory",
+      tone: "purple",
     },
     {
       icon: SupportIcon,

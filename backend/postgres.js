@@ -22,6 +22,30 @@ const Joi = require("joi");
 const geoip = require("geoip-lite");
 require("dotenv").config();
 
+const sanitizeThreshold = (value, fallback) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const RECONCILIATION_TOLERANCE_SECONDS = parseInt(
+  process.env.INVENTORY_RECONCILIATION_TOLERANCE_SECONDS || "600",
+  10
+);
+
+const INVENTORY_LOW_STOCK_THRESHOLDS = {
+  manufacturer: sanitizeThreshold(
+    process.env.INVENTORY_LOW_STOCK_MANUFACTURER,
+    50
+  ),
+  supplier: sanitizeThreshold(process.env.INVENTORY_LOW_STOCK_SUPPLIER, 20),
+  retailer: sanitizeThreshold(process.env.INVENTORY_LOW_STOCK_RETAILER, 10),
+};
+
+let chainEventsAvailabilityCache = {
+  value: null,
+  checkedAt: 0,
+};
+
 let regionDisplayNames = null;
 try {
   if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
@@ -34,6 +58,65 @@ try {
 const PRIVATE_NETWORK_GEO = {
   country: "Local/Test Environment",
   city: "Internal Network",
+};
+
+const nowMs = () => Date.now();
+
+const isChainEventsAvailable = async () => {
+  const now = nowMs();
+  if (
+    chainEventsAvailabilityCache.value !== null &&
+    now - chainEventsAvailabilityCache.checkedAt < 60 * 1000
+  ) {
+    return chainEventsAvailabilityCache.value;
+  }
+  try {
+    const reg = await client.query(
+      "SELECT to_regclass('public.chain_events') AS reg"
+    );
+    const available = Boolean(reg.rows?.[0]?.reg);
+    chainEventsAvailabilityCache = { value: available, checkedAt: now };
+    return available;
+  } catch (err) {
+    console.warn(
+      "[inventory] Failed to check chain_events availability:",
+      err?.message || err
+    );
+    chainEventsAvailabilityCache = { value: false, checkedAt: now };
+    return false;
+  }
+};
+
+const buildReconciliationFragments = (tableAlias = "i", joinAlias = "rec") => {
+  const tolerance = Number.isFinite(RECONCILIATION_TOLERANCE_SECONDS)
+    ? RECONCILIATION_TOLERANCE_SECONDS
+    : 600;
+  return {
+    select: `${joinAlias}.reconciliation_status, ${joinAlias}.last_chain_event_at`,
+    join: `LEFT JOIN LATERAL (
+        SELECT
+          CASE
+            WHEN latest_event.ts_epoch IS NULL THEN 'missing'
+            WHEN latest_event.ts_epoch >= EXTRACT(EPOCH FROM ${tableAlias}.updated_at) - ${tolerance}
+              THEN 'synced'
+            ELSE 'stale'
+          END AS reconciliation_status,
+          TO_TIMESTAMP(latest_event.ts_epoch) AS last_chain_event_at
+        FROM (
+          SELECT
+            COALESCE(
+              NULLIF(ce.payload->>'timestampUnix','')::bigint,
+              EXTRACT(EPOCH FROM ce.emitted_at),
+              EXTRACT(EPOCH FROM ce.created_at)
+            ) AS ts_epoch
+          FROM chain_events ce
+          WHERE ce.serial_number = ${tableAlias}.serial_number
+            AND ce.event_name IN ('ProductHistoryAdded','ProductRegistered')
+          ORDER BY ce.emitted_at DESC NULLS LAST, ce.created_at DESC NULLS LAST
+          LIMIT 1
+        ) latest_event
+      ) ${joinAlias} ON true`,
+  };
 };
 
 const app = express();
@@ -161,9 +244,149 @@ async function gracefulShutdown(signal) {
   process.on(signal, () => gracefulShutdown(signal));
 });
 
+async function ensureInventoryTables() {
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory (
+        id SERIAL PRIMARY KEY
+      );
+    `);
+    await client.query(`
+      ALTER TABLE inventory
+        ADD COLUMN IF NOT EXISTS serial_number TEXT,
+        ADD COLUMN IF NOT EXISTS product_name TEXT,
+        ADD COLUMN IF NOT EXISTS brand TEXT,
+        ADD COLUMN IF NOT EXISTS product_image TEXT,
+        ADD COLUMN IF NOT EXISTS owner_role TEXT DEFAULT 'manufacturer',
+        ADD COLUMN IF NOT EXISTS owner_username TEXT,
+        ADD COLUMN IF NOT EXISTS qty INTEGER DEFAULT 1 CHECK (qty >= 0),
+        ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'in-factory',
+        ADD COLUMN IF NOT EXISTS location TEXT,
+        ADD COLUMN IF NOT EXISTS notes TEXT,
+        ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'inventory_serial_number_key'
+        ) THEN
+          ALTER TABLE inventory ADD CONSTRAINT inventory_serial_number_key UNIQUE (serial_number);
+        END IF;
+      END$$;
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS inventory_moves (
+        id SERIAL PRIMARY KEY
+      );
+    `);
+    await client.query(`
+      ALTER TABLE inventory_moves
+        ADD COLUMN IF NOT EXISTS serial_number TEXT,
+        ADD COLUMN IF NOT EXISTS product_name TEXT,
+        ADD COLUMN IF NOT EXISTS brand TEXT,
+        ADD COLUMN IF NOT EXISTS product_image TEXT,
+        ADD COLUMN IF NOT EXISTS from_owner_role TEXT,
+        ADD COLUMN IF NOT EXISTS from_owner_username TEXT,
+        ADD COLUMN IF NOT EXISTS to_owner_role TEXT,
+        ADD COLUMN IF NOT EXISTS to_owner_username TEXT,
+        ADD COLUMN IF NOT EXISTS qty INTEGER DEFAULT 1 CHECK (qty > 0),
+        ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'in-transit',
+        ADD COLUMN IF NOT EXISTS notes TEXT,
+        ADD COLUMN IF NOT EXISTS actor_username TEXT,
+        ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+        ADD COLUMN IF NOT EXISTS location TEXT,
+        ADD COLUMN IF NOT EXISTS moved_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_owner_role'
+        ) THEN
+          CREATE INDEX idx_inventory_owner_role ON inventory(owner_role);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_status'
+        ) THEN
+          CREATE INDEX idx_inventory_status ON inventory(status);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_updated_at'
+        ) THEN
+          CREATE INDEX idx_inventory_updated_at ON inventory(updated_at DESC);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_serial'
+        ) THEN
+          CREATE INDEX idx_inventory_serial ON inventory(serial_number);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_moves_serial'
+        ) THEN
+          CREATE INDEX idx_inventory_moves_serial ON inventory_moves(serial_number);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_moves_moved_at'
+        ) THEN
+          CREATE INDEX idx_inventory_moves_moved_at ON inventory_moves(moved_at DESC);
+        END IF;
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_inventory_moves_to_role'
+        ) THEN
+          CREATE INDEX idx_inventory_moves_to_role ON inventory_moves(to_owner_role);
+        END IF;
+      END$$;
+    `);
+    await client.query(`
+      CREATE OR REPLACE FUNCTION set_inventory_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'inventory') THEN
+          DROP TRIGGER IF EXISTS trg_inventory_set_updated_at ON inventory;
+          CREATE TRIGGER trg_inventory_set_updated_at
+          BEFORE UPDATE ON inventory
+          FOR EACH ROW
+          EXECUTE FUNCTION set_inventory_updated_at();
+        END IF;
+      END$$;
+    `);
+    await client.query(`
+      INSERT INTO inventory (serial_number, product_name, brand, product_image, owner_role, qty, status)
+      SELECT p.serialnumber, p.name, p.brand, p.image, 'manufacturer', 1, 'in-factory'
+      FROM product p
+      WHERE NOT EXISTS (
+        SELECT 1 FROM inventory i WHERE i.serial_number = p.serialnumber
+      );
+    `);
+    await client.query(`
+      UPDATE inventory i
+      SET product_name = COALESCE(i.product_name, p.name),
+          brand = COALESCE(i.brand, p.brand),
+          product_image = COALESCE(i.product_image, p.image)
+      FROM product p
+      WHERE p.serialnumber = i.serial_number;
+    `);
+    console.log("Inventory tables ready");
+  } catch (err) {
+    console.error("Failed to ensure inventory tables:", err.message);
+  }
+}
+
 connectionPromise
   .then(async () => {
     console.log("Connected to PostgreSQL");
+    await ensureInventoryTables();
     try {
       chainIndexerController = await startChainEventsIndexer({
         pgClient: client,
@@ -363,18 +586,250 @@ const storageProfile = multer.diskStorage({
   },
 });
 
+async function seedInventoryFromProduct({
+  serialNumber,
+  productName,
+  brand,
+  productImage,
+  ownerRole = "manufacturer",
+  ownerUsername = null,
+  qty = 1,
+  status = "in-factory",
+  location = null,
+  metadata = null,
+}) {
+  const normalizedSerial = (serialNumber || "").trim();
+  if (!normalizedSerial) {
+    throw new Error("Serial number is required to seed inventory");
+  }
+  const normalizedProductName =
+    typeof productName === "string" && productName.trim().length
+      ? productName.trim()
+      : null;
+  const normalizedBrand =
+    typeof brand === "string" && brand.trim().length ? brand.trim() : null;
+  const normalizedImage =
+    typeof productImage === "string" && productImage.trim().length
+      ? productImage.trim()
+      : null;
+  const normalizedOwnerRole = normalizeRoleValue(ownerRole) || "manufacturer";
+  const normalizedOwnerUsername =
+    typeof ownerUsername === "string" && ownerUsername.trim().length
+      ? ownerUsername.trim()
+      : null;
+  const safeQty = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
+  const normalizedStatus =
+    typeof status === "string" && status.trim().length
+      ? status.trim().toLowerCase()
+      : "in-factory";
+  const normalizedLocation =
+    typeof location === "string" && location.trim().length
+      ? location.trim()
+      : null;
+  const metadataPayload = serializeMetadataPayload(metadata);
+
+  const insertResult = await client.query(
+    `INSERT INTO inventory (
+       serial_number, product_name, brand, product_image,
+       owner_role, owner_username, qty, status, location, metadata
+     ) VALUES (
+       $1, $2, $3, $4,
+       $5, $6, $7, $8, $9,
+       COALESCE($10::jsonb, '{}'::jsonb)
+     )
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
+    [
+      normalizedSerial,
+      normalizedProductName,
+      normalizedBrand,
+      normalizedImage,
+      normalizedOwnerRole,
+      normalizedOwnerUsername,
+      safeQty,
+      normalizedStatus,
+      normalizedLocation,
+      metadataPayload,
+    ]
+  );
+
+  if (insertResult.rows?.length) {
+    return {
+      record: insertResult.rows[0],
+      inserted: true,
+      metadataPayload,
+    };
+  }
+
+  const updateResult = await client.query(
+    `UPDATE inventory
+       SET product_name = COALESCE($2, product_name),
+           brand = COALESCE($3, brand),
+           product_image = CASE
+             WHEN $4 IS NOT NULL AND LENGTH($4) > 0 THEN $4
+             ELSE product_image
+           END,
+           location = COALESCE($9, location),
+           metadata = CASE
+             WHEN $10::jsonb IS NOT NULL THEN jsonb_strip_nulls(COALESCE(metadata, '{}'::jsonb) || $10::jsonb)
+             ELSE metadata
+           END
+     WHERE serial_number = $1
+     RETURNING *`,
+    [
+      normalizedSerial,
+      normalizedProductName,
+      normalizedBrand,
+      normalizedImage,
+      normalizedOwnerRole,
+      normalizedOwnerUsername,
+      safeQty,
+      normalizedStatus,
+      normalizedLocation,
+      metadataPayload,
+    ]
+  );
+
+  return {
+    record: updateResult.rows?.[0] || null,
+    inserted: false,
+    metadataPayload,
+  };
+}
+
 async function addProduct(
   serialNumber,
   name,
   brand,
   username,
-  contractAddress = null
+  contractAddress = null,
+  options = {}
 ) {
   try {
+    const normalizedSerial = (serialNumber || "").trim();
+    const normalizedName = (name || "").trim();
+    const normalizedBrand = (brand || "").trim();
+    const normalizedDescription =
+      typeof options.description === "string" &&
+      options.description.trim().length
+        ? options.description.trim()
+        : null;
+    const normalizedImage =
+      typeof options.productImage === "string" &&
+      options.productImage.trim().length
+        ? options.productImage.trim()
+        : null;
+
     await client.query(
-      "INSERT INTO product (serialNumber, name, brand) VALUES ($1, $2, $3)",
-      [serialNumber, name, brand]
+      "INSERT INTO product (serialNumber, name, brand, description, image) VALUES ($1, $2, $3, $4, $5)",
+      [
+        normalizedSerial,
+        normalizedName,
+        normalizedBrand,
+        normalizedDescription,
+        normalizedImage,
+      ]
     );
+
+    const normalizedOwnerRole =
+      normalizeRoleValue(options.ownerRole) || "manufacturer";
+    const normalizedOwnerUsername =
+      typeof options.ownerUsername === "string" &&
+      options.ownerUsername.trim().length
+        ? options.ownerUsername.trim()
+        : username || null;
+    const normalizedStatus =
+      typeof options.status === "string" && options.status.trim().length
+        ? options.status.trim().toLowerCase()
+        : "in-factory";
+    const qtyValue =
+      Number.isFinite(options.qty) && options.qty > 0
+        ? Math.floor(options.qty)
+        : 1;
+    const normalizedLocation =
+      typeof options.location === "string" && options.location.trim().length
+        ? options.location.trim()
+        : null;
+
+    const baseMetadata = {
+      source: "manufacturer-add",
+      contractAddress: contractAddress || null,
+      addedBy: username,
+    };
+    let inventoryMetadata = baseMetadata;
+    if (options.metadata) {
+      if (
+        typeof options.metadata === "object" &&
+        !Array.isArray(options.metadata)
+      ) {
+        inventoryMetadata = {
+          ...inventoryMetadata,
+          ...options.metadata,
+        };
+      } else {
+        inventoryMetadata = {
+          ...inventoryMetadata,
+          metadataNote: options.metadata,
+        };
+      }
+    }
+    if (normalizedDescription) {
+      inventoryMetadata.description = normalizedDescription;
+    }
+    if (normalizedLocation) {
+      inventoryMetadata.location = normalizedLocation;
+    }
+
+    const seedResult = await seedInventoryFromProduct({
+      serialNumber: normalizedSerial,
+      productName: normalizedName,
+      brand: normalizedBrand,
+      productImage: normalizedImage,
+      ownerRole: normalizedOwnerRole,
+      ownerUsername: normalizedOwnerUsername,
+      qty: qtyValue,
+      status: normalizedStatus,
+      location: normalizedLocation,
+      metadata: inventoryMetadata,
+    });
+
+    if (seedResult.inserted) {
+      try {
+        await client.query(
+          `INSERT INTO inventory_moves (
+             serial_number, product_name, brand, product_image,
+             from_owner_role, from_owner_username,
+             to_owner_role, to_owner_username,
+             qty, status, notes, actor_username, metadata, location
+           ) VALUES (
+             $1, $2, $3, $4,
+             NULL, NULL,
+             $5, $6,
+             $7, $8, $9, $10, COALESCE($11::jsonb, '{}'::jsonb), $12
+           )`,
+          [
+            normalizedSerial,
+            normalizedName,
+            normalizedBrand,
+            normalizedImage,
+            normalizedOwnerRole,
+            normalizedOwnerUsername,
+            qtyValue,
+            normalizedStatus,
+            "Initial manufacturing intake",
+            username,
+            seedResult.metadataPayload,
+            normalizedLocation,
+          ]
+        );
+      } catch (moveErr) {
+        console.warn(
+          "Failed to log initial inventory move for",
+          normalizedSerial,
+          moveErr?.message || moveErr
+        );
+      }
+    }
 
     logActivity(
       username,
@@ -410,6 +865,9 @@ async function addProduct(
     } catch (emailErr) {
       console.error("Error sending product registration email:", emailErr);
     }
+    return {
+      inventory: seedResult.record || null,
+    };
   } catch (err) {
     console.log(err.message);
     throw err;
@@ -1062,6 +1520,18 @@ app.post("/addproduct", async (req, res) => {
     brand: Joi.string().trim().min(1).max(100).required(),
     username: Joi.string().allow(null, ""),
     contractAddress: Joi.string().trim().allow(null, ""),
+    description: Joi.string().trim().max(4000).allow(null, ""),
+    productImage: Joi.string().trim().max(512).allow(null, ""),
+    location: Joi.string().trim().max(512).allow(null, ""),
+    status: Joi.string().trim().max(64).allow(null, ""),
+    ownerRole: Joi.string()
+      .valid("manufacturer", "supplier", "retailer", "admin")
+      .allow(null, ""),
+    ownerUsername: Joi.string().trim().allow(null, ""),
+    qty: Joi.number().integer().min(1).max(100000).default(1),
+    metadata: Joi.alternatives()
+      .try(Joi.object().unknown(true), Joi.string().max(4000))
+      .allow(null, ""),
   });
 
   const { value, error } = addProductSchema.validate(req.body || {}, {
@@ -1075,8 +1545,33 @@ app.post("/addproduct", async (req, res) => {
       .json({ success: false, message: `Invalid payload: ${error.message}` });
   }
 
-  const { serialNumber, name, brand, username, contractAddress } = value;
+  const {
+    serialNumber,
+    name,
+    brand,
+    username,
+    contractAddress,
+    description,
+    productImage,
+    location,
+    status,
+    ownerRole,
+    ownerUsername,
+    qty,
+    metadata,
+  } = value;
   const actor = username || req.user?.username || "admin";
+  const normalizedOwnerRole = normalizeRoleValue(ownerRole) || "manufacturer";
+  const normalizedOwnerUsername = ownerUsername || actor;
+  const normalizedStatus =
+    typeof status === "string" && status.trim().length
+      ? status.trim().toLowerCase()
+      : "in-factory";
+  const normalizedLocation =
+    typeof location === "string" && location.trim().length
+      ? location.trim()
+      : null;
+  const qtyValue = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
 
   try {
     const existing = await client.query(
@@ -1091,8 +1586,28 @@ app.post("/addproduct", async (req, res) => {
       });
     }
 
-    await addProduct(serialNumber, name, brand, actor, contractAddress || null);
-    res.json({ success: true, message: "Product inserted" });
+    const addResult = await addProduct(
+      serialNumber,
+      name,
+      brand,
+      actor,
+      contractAddress || null,
+      {
+        description,
+        productImage,
+        location: normalizedLocation,
+        ownerRole: normalizedOwnerRole,
+        ownerUsername: normalizedOwnerUsername,
+        status: normalizedStatus,
+        qty: qtyValue,
+        metadata: metadata || null,
+      }
+    );
+    res.json({
+      success: true,
+      message: "Product inserted",
+      inventory: addResult?.inventory || null,
+    });
   } catch (err) {
     console.error("Add product error:", err?.message || err);
     res.status(500).json({
@@ -1320,6 +1835,637 @@ app.get("/ownership/:serialNumber", async (req, res) => {
       .json({ success: false, message: "Error fetching ownership" });
   }
 });
+
+// ===== Inventory & Product Movement Module =====
+const INVENTORY_ALLOWED_ROLES = [
+  "admin",
+  "manufacturer",
+  "supplier",
+  "retailer",
+];
+
+const inventoryListSchema = Joi.object({
+  ownerRole: Joi.string()
+    .valid("admin", "manufacturer", "supplier", "retailer", "all")
+    .empty("")
+    .default("all"),
+  status: Joi.string().max(64).allow(null, ""),
+  search: Joi.string().max(128).allow(null, ""),
+  limit: Joi.number().integer().min(1).max(500).default(200),
+});
+
+const inventoryMovesSchema = Joi.object({
+  ownerRole: Joi.string()
+    .valid("admin", "manufacturer", "supplier", "retailer", "all")
+    .empty("")
+    .default("all"),
+  serialNumber: Joi.string().max(128).allow(null, ""),
+  limit: Joi.number().integer().min(1).max(200).default(50),
+});
+
+const inventoryMoveSchema = Joi.object({
+  serialNumber: Joi.string().trim().max(128).required(),
+  productName: Joi.string().allow(null, ""),
+  brand: Joi.string().allow(null, ""),
+  productImage: Joi.string().allow(null, ""),
+  qty: Joi.number().integer().min(1).max(100000).default(1),
+  toRole: Joi.string()
+    .valid("manufacturer", "supplier", "retailer", "admin")
+    .required(),
+  toUsername: Joi.string().allow(null, ""),
+  status: Joi.string().max(64).allow(null, ""),
+  fromRole: Joi.string().allow(null, ""),
+  fromUsername: Joi.string().allow(null, ""),
+  notes: Joi.string().allow(null, ""),
+  location: Joi.string().allow(null, ""),
+  metadata: Joi.alternatives()
+    .try(Joi.object().unknown(true), Joi.string().max(2000))
+    .optional(),
+});
+
+const normalizeRoleValue = (role) =>
+  typeof role === "string" ? role.trim().toLowerCase() : "";
+
+const deriveLowStockWarnings = (roleRows = []) => {
+  const warnings = [];
+  for (const row of roleRows) {
+    const normalizedRole = normalizeRoleValue(row.owner_role);
+    if (!normalizedRole) continue;
+    const threshold = INVENTORY_LOW_STOCK_THRESHOLDS[normalizedRole];
+    if (!Number.isFinite(threshold) || threshold < 0) continue;
+    const qty = Number(row.total_qty) || 0;
+    if (qty <= threshold) {
+      warnings.push({
+        role: normalizedRole,
+        threshold,
+        qty,
+        deficit: Math.max(0, threshold - qty),
+      });
+    }
+  }
+  return warnings;
+};
+
+const serializeMetadataPayload = (metadata) => {
+  if (metadata === undefined || metadata === null) {
+    return null;
+  }
+  if (typeof metadata === "string") {
+    const trimmed = metadata.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  try {
+    return JSON.stringify(metadata);
+  } catch (err) {
+    console.warn("Failed to stringify metadata payload:", err?.message);
+    return null;
+  }
+};
+
+const resolveInventoryScope = (userRole, requestedRole) => {
+  const normalizedUserRole = normalizeRoleValue(userRole);
+  if (normalizedUserRole !== "admin") {
+    return normalizedUserRole || null;
+  }
+  const normalizedRequested = normalizeRoleValue(requestedRole);
+  if (!normalizedRequested || normalizedRequested === "all") {
+    return null;
+  }
+  return normalizedRequested;
+};
+
+app.get(
+  "/inventory",
+  authenticateToken,
+  requireRole(INVENTORY_ALLOWED_ROLES),
+  async (req, res) => {
+    try {
+      const { value, error } = inventoryListSchema.validate(req.query || {}, {
+        abortEarly: false,
+        stripUnknown: true,
+      });
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      const scopeRole = resolveInventoryScope(req.user?.role, value.ownerRole);
+      const statusFilter =
+        typeof value.status === "string" && value.status.trim().length
+          ? value.status.trim().toLowerCase()
+          : null;
+      const searchFilter =
+        typeof value.search === "string" && value.search.trim().length
+          ? `%${value.search.trim()}%`
+          : null;
+
+      const filters = [];
+      const filterParams = [];
+
+      if (scopeRole) {
+        const idx = filterParams.length + 1;
+        filters.push(`i.owner_role = $${idx}`);
+        filterParams.push(scopeRole);
+      }
+      if (statusFilter) {
+        const idx = filterParams.length + 1;
+        filters.push(`LOWER(COALESCE(i.status, '')) = $${idx}`);
+        filterParams.push(statusFilter);
+      }
+      if (searchFilter) {
+        const idx = filterParams.length + 1;
+        filters.push(
+          `(i.serial_number ILIKE $${idx} OR COALESCE(i.product_name, '') ILIKE $${idx} OR COALESCE(i.brand, '') ILIKE $${idx})`
+        );
+        filterParams.push(searchFilter);
+      }
+
+      const whereClause = filters.length
+        ? `WHERE ${filters.join(" AND ")}`
+        : "";
+
+      const chainEventsAvailable = await isChainEventsAvailable();
+      const reconciliationFragments = chainEventsAvailable
+        ? buildReconciliationFragments("i", "rec")
+        : {
+            select:
+              "'unknown'::text AS reconciliation_status, NULL::timestamptz AS last_chain_event_at",
+            join: "",
+          };
+
+      const listParams = [...filterParams, value.limit];
+      const limitIdx = listParams.length;
+      const itemsResult = await client.query(
+        `SELECT i.id,
+          i.serial_number,
+          COALESCE(i.product_name, p.name) AS product_name,
+          COALESCE(i.brand, p.brand) AS brand,
+          COALESCE(i.product_image, p.image) AS product_image,
+          p.description AS product_description,
+          i.owner_role,
+          i.owner_username,
+          i.qty,
+          i.status,
+          i.location,
+          i.notes,
+          i.metadata,
+          i.created_at,
+          i.updated_at,
+          ${reconciliationFragments.select}
+         FROM inventory i
+         LEFT JOIN product p ON p.serialnumber = i.serial_number
+         ${reconciliationFragments.join}
+         ${whereClause}
+         ORDER BY i.updated_at DESC
+         LIMIT $${limitIdx}`,
+        listParams
+      );
+
+      const totalsResult = await client.query(
+        `SELECT COUNT(*)::int AS total_records,
+                COALESCE(SUM(i.qty), 0)::int AS total_qty
+         FROM inventory i
+         ${whereClause}`,
+        filterParams
+      );
+
+      const statusResult = await client.query(
+        `SELECT COALESCE(i.status, 'unknown') AS status,
+                COALESCE(SUM(i.qty), 0)::int AS total_qty
+         FROM inventory i
+         ${whereClause}
+         GROUP BY COALESCE(i.status, 'unknown')
+         ORDER BY total_qty DESC`,
+        filterParams
+      );
+
+      const roleResult = await client.query(
+        `SELECT COALESCE(i.owner_role, 'unknown') AS owner_role,
+                COALESCE(SUM(i.qty), 0)::int AS total_qty
+         FROM inventory i
+         ${whereClause}
+         GROUP BY COALESCE(i.owner_role, 'unknown')
+         ORDER BY total_qty DESC`,
+        filterParams
+      );
+
+      let reconciliationSummaryRows = [];
+      if (chainEventsAvailable) {
+        const { join: reconciliationSummaryJoin } =
+          buildReconciliationFragments("i", "rec_summary");
+        const reconciliationResult = await client.query(
+          `SELECT COALESCE(rec_summary.reconciliation_status, 'missing') AS status,
+                  COUNT(*)::int AS records
+           FROM inventory i
+           ${reconciliationSummaryJoin}
+           ${whereClause}
+           GROUP BY COALESCE(rec_summary.reconciliation_status, 'missing')
+           ORDER BY status`,
+          filterParams
+        );
+        reconciliationSummaryRows = reconciliationResult.rows || [];
+      }
+
+      const lowStockWarnings = deriveLowStockWarnings(roleResult.rows || []);
+
+      return res.json({
+        success: true,
+        available: true,
+        filters: {
+          ownerRole: scopeRole || "network",
+          status: statusFilter || null,
+          search: value.search || null,
+        },
+        items: itemsResult.rows || [],
+        summary: {
+          totalRecords: totalsResult.rows?.[0]?.total_records || 0,
+          totalQty: totalsResult.rows?.[0]?.total_qty || 0,
+          statusBreakdown: statusResult.rows || [],
+          roleBreakdown: roleResult.rows || [],
+          reconciliation: {
+            available: chainEventsAvailable,
+            breakdown: reconciliationSummaryRows,
+          },
+          lowStockWarnings,
+        },
+      });
+    } catch (err) {
+      console.error("/inventory error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Error fetching inventory" });
+    }
+  }
+);
+
+app.get(
+  "/inventory/moves",
+  authenticateToken,
+  requireRole(INVENTORY_ALLOWED_ROLES),
+  async (req, res) => {
+    try {
+      const { value, error } = inventoryMovesSchema.validate(req.query || {}, {
+        abortEarly: false,
+        stripUnknown: true,
+      });
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      const scopeRole = resolveInventoryScope(req.user?.role, value.ownerRole);
+      const serialFilter =
+        typeof value.serialNumber === "string" &&
+        value.serialNumber.trim().length
+          ? value.serialNumber.trim()
+          : null;
+
+      const filters = [];
+      const params = [];
+
+      if (serialFilter) {
+        const idx = params.length + 1;
+        filters.push(`serial_number = $${idx}`);
+        params.push(serialFilter);
+      }
+
+      if (scopeRole) {
+        const idx = params.length + 1;
+        filters.push(
+          `(COALESCE(from_owner_role, '') = $${idx} OR COALESCE(to_owner_role, '') = $${idx})`
+        );
+        params.push(scopeRole);
+      }
+
+      const whereClause = filters.length
+        ? `WHERE ${filters.join(" AND ")}`
+        : "";
+      const listParams = [...params, value.limit];
+      const limitIdx = listParams.length;
+
+      const result = await client.query(
+        `SELECT id, serial_number, product_name, brand, product_image,
+                from_owner_role, from_owner_username,
+                to_owner_role, to_owner_username,
+                qty, status, notes, actor_username, metadata, location, moved_at
+         FROM inventory_moves
+         ${whereClause}
+         ORDER BY moved_at DESC
+         LIMIT $${limitIdx}`,
+        listParams
+      );
+
+      return res.json({
+        success: true,
+        available: true,
+        filters: {
+          ownerRole: scopeRole || "network",
+          serialNumber: serialFilter,
+        },
+        items: result.rows || [],
+      });
+    } catch (err) {
+      console.error("/inventory/moves error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Error fetching move history" });
+    }
+  }
+);
+
+app.get(
+  "/inventory/:serialNumber",
+  authenticateToken,
+  requireRole(INVENTORY_ALLOWED_ROLES),
+  async (req, res) => {
+    try {
+      const serialNumber = (req.params.serialNumber || "").trim();
+      if (!serialNumber) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Serial number is required" });
+      }
+      const scopeRole = resolveInventoryScope(req.user?.role, null);
+      const params = [serialNumber];
+      let clause = "i.serial_number = $1";
+      if (scopeRole) {
+        const idx = params.length + 1;
+        params.push(scopeRole);
+        clause += ` AND i.owner_role = $${idx}`;
+      }
+
+      const chainEventsAvailable = await isChainEventsAvailable();
+      const detailFragments = chainEventsAvailable
+        ? buildReconciliationFragments("i", "rec_detail")
+        : {
+            select:
+              "'unknown'::text AS reconciliation_status, NULL::timestamptz AS last_chain_event_at",
+            join: "",
+          };
+
+      const result = await client.query(
+        `SELECT i.id,
+                i.serial_number,
+                COALESCE(i.product_name, p.name) AS product_name,
+                COALESCE(i.brand, p.brand) AS brand,
+                COALESCE(i.product_image, p.image) AS product_image,
+                p.description AS product_description,
+                i.owner_role,
+                i.owner_username,
+                i.qty,
+                i.status,
+                i.location,
+                i.notes,
+                i.metadata,
+                i.created_at,
+                  i.updated_at,
+                  ${detailFragments.select}
+         FROM inventory i
+         LEFT JOIN product p ON p.serialnumber = i.serial_number
+                ${detailFragments.join}
+         WHERE ${clause}
+         LIMIT 1`,
+        params
+      );
+
+      if (!result.rows?.length) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Inventory record not found" });
+      }
+
+      return res.json({ success: true, item: result.rows[0] });
+    } catch (err) {
+      console.error("/inventory/:serialNumber error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Error fetching inventory record" });
+    }
+  }
+);
+
+app.post(
+  "/inventory/move",
+  authenticateToken,
+  requireRole(INVENTORY_ALLOWED_ROLES),
+  async (req, res) => {
+    try {
+      const { value, error } = inventoryMoveSchema.validate(req.body || {}, {
+        abortEarly: false,
+        stripUnknown: true,
+      });
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      const serialNumber = value.serialNumber.trim();
+      const actorUsername = req.user?.username || "system";
+      const actorRole = normalizeRoleValue(req.user?.role) || "system";
+      const toRole = normalizeRoleValue(value.toRole);
+      const normalizedFromRole = normalizeRoleValue(value.fromRole);
+      const targetQty = Number.isFinite(value.qty) ? value.qty : 1;
+      const targetStatus =
+        typeof value.status === "string" && value.status.trim().length
+          ? value.status.trim().toLowerCase()
+          : "in-transit";
+      const metadataPayload = serializeMetadataPayload(value.metadata);
+
+      await client.query("BEGIN");
+
+      const existingResult = await client.query(
+        "SELECT * FROM inventory WHERE serial_number = $1 FOR UPDATE",
+        [serialNumber]
+      );
+      const existing = existingResult.rows?.[0] || null;
+      const existingOwner = existing?.owner_role
+        ? existing.owner_role.toLowerCase()
+        : null;
+
+      if (
+        actorRole !== "admin" &&
+        existing &&
+        existingOwner &&
+        existingOwner !== actorRole &&
+        normalizedFromRole !== actorRole &&
+        toRole !== actorRole
+      ) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({
+          success: false,
+          message: "You cannot move inventory you do not control",
+        });
+      }
+
+      let productRecord = null;
+      try {
+        const productLookup = await client.query(
+          "SELECT name, brand, image FROM product WHERE serialnumber = $1",
+          [serialNumber]
+        );
+        productRecord = productLookup.rows?.[0] || null;
+      } catch (lookupErr) {
+        console.warn(
+          "[inventory] product lookup failed for serial",
+          serialNumber,
+          lookupErr?.message || lookupErr
+        );
+      }
+
+      const normalizedProductName =
+        typeof value.productName === "string" && value.productName.trim().length
+          ? value.productName.trim()
+          : null;
+      const normalizedBrand =
+        typeof value.brand === "string" && value.brand.trim().length
+          ? value.brand.trim()
+          : null;
+      const normalizedProductImage =
+        typeof value.productImage === "string" &&
+        value.productImage.trim().length
+          ? value.productImage.trim()
+          : null;
+
+      const productName =
+        normalizedProductName ||
+        existing?.product_name ||
+        productRecord?.name ||
+        null;
+      const brand =
+        normalizedBrand || existing?.brand || productRecord?.brand || null;
+      const productImage =
+        normalizedProductImage ||
+        existing?.product_image ||
+        productRecord?.image ||
+        null;
+      const fromRole = normalizedFromRole || existingOwner || actorRole;
+      const fromUsername =
+        value.fromUsername || existing?.owner_username || null;
+      const toUsername = value.toUsername || null;
+      const nextLocation = value.location || existing?.location || null;
+      const nextNotes = value.notes ?? null;
+
+      let upsertRow = null;
+      if (existing) {
+        const updateResult = await client.query(
+          `UPDATE inventory
+             SET product_name = $2,
+                 brand = $3,
+                 product_image = $4,
+                 owner_role = $5,
+                 owner_username = $6,
+                 qty = $7,
+                 status = $8,
+                 location = $9,
+                 notes = COALESCE($10, notes),
+                 metadata = CASE
+                   WHEN $11::jsonb IS NOT NULL THEN jsonb_strip_nulls(COALESCE(metadata, '{}'::jsonb) || $11::jsonb)
+                   ELSE metadata
+                 END
+           WHERE serial_number = $1
+           RETURNING *`,
+          [
+            serialNumber,
+            productName,
+            brand,
+            productImage,
+            toRole,
+            toUsername || existing.owner_username || null,
+            targetQty,
+            targetStatus,
+            nextLocation,
+            nextNotes,
+            metadataPayload,
+          ]
+        );
+        upsertRow = updateResult.rows?.[0] || null;
+      } else {
+        const insertResult = await client.query(
+          `INSERT INTO inventory (
+             serial_number, product_name, brand, product_image, owner_role, owner_username,
+             qty, status, location, notes, metadata
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6,
+             $7, $8, $9, $10, COALESCE($11::jsonb, '{}'::jsonb)
+           )
+           RETURNING *`,
+          [
+            serialNumber,
+            productName,
+            brand,
+            productImage,
+            toRole,
+            toUsername,
+            targetQty,
+            targetStatus,
+            nextLocation,
+            nextNotes,
+            metadataPayload,
+          ]
+        );
+        upsertRow = insertResult.rows?.[0] || null;
+      }
+
+      const moveResult = await client.query(
+        `INSERT INTO inventory_moves (
+           serial_number, product_name, brand, product_image,
+           from_owner_role, from_owner_username,
+           to_owner_role, to_owner_username,
+           qty, status, notes, actor_username, metadata, location
+         ) VALUES (
+           $1, $2, $3, $4,
+           $5, $6,
+           $7, $8,
+           $9, $10, $11, $12, COALESCE($13::jsonb, '{}'::jsonb), $14
+         )
+         RETURNING *`,
+        [
+          serialNumber,
+          productName,
+          brand,
+          productImage,
+          fromRole || null,
+          fromUsername,
+          toRole,
+          toUsername,
+          targetQty,
+          targetStatus,
+          nextNotes,
+          actorUsername,
+          metadataPayload,
+          nextLocation,
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      logActivity(
+        actorUsername,
+        "inventory_move",
+        serialNumber,
+        `Moved ${targetQty} unit(s) from ${fromRole || "unknown"} to ${toRole}`
+      );
+
+      return res.json({
+        success: true,
+        item: upsertRow,
+        move: moveResult.rows?.[0] || null,
+      });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("/inventory/move error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Failed to record inventory move" });
+    }
+  }
+);
 
 const unixToIso = (seconds) => {
   if (!seconds && seconds !== 0) return null;

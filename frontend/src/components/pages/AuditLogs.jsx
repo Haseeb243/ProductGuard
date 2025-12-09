@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { useConfig } from "../../context/ConfigContext";
 import AdminShell from "../admin/AdminShell";
-import { GlassCard, glassButtonClass } from "../admin/ui";
+import { GlassCard, glassButtonClass, glassSelectClass } from "../admin/ui";
 
 const LOG_TYPE_LABELS = {
   activity: "Activity",
@@ -25,7 +25,7 @@ const controlBaseClasses =
 
 const inputClasses = `${controlBaseClasses} rounded-2xl px-4 py-2.5 placeholder-white/40`;
 
-const selectClasses = `${controlBaseClasses} appearance-none px-4 py-2.5 pr-10`;
+const selectClasses = `${glassSelectClass} pr-10 text-sm`;
 
 const chipClasses =
   "inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/80";
@@ -56,7 +56,7 @@ const SelectControl = ({
       <select
         value={value}
         onChange={onChange}
-        className={`${selectClasses} ${sizeClasses} bg-white/8 text-white/80 backdrop-blur-sm`}
+        className={`${selectClasses} ${sizeClasses} text-white/90 backdrop-blur-sm`}
       >
         {children}
       </select>

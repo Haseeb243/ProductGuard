@@ -5,8 +5,9 @@ A blockchain-powered product authentication platform with a React frontend, Node
 ## Table of contents
 
 - Overview
+- Key Features & Pages
 - Tech stack & structure
-- Screenshots (optional)
+- Screenshots
 - Prerequisites
 - Quick start
 - Database setup (import SQL dump)
@@ -71,6 +72,29 @@ Repository layout:
 - Retailers: Inventory management and customer-facing features
 - Public: QR scanner with authenticity verification
 
+## Screenshots
+
+### Home Page
+![ProductGuard Home - Blockchain Product Authentication](frontend/public/home-page.png)
+
+### Admin Control Tower
+![Admin Dashboard - Operations Command Center](frontend/public/admin-dashboard.png)
+
+### Consumer Authenticity Verification
+![QR Scanner - Verify Products in Seconds](frontend/public/scanner-page.png)
+
+### Manufacturer Operations Deck
+![Manufacturer Hub - Product Registration & Oversight](frontend/public/manufacturer-dashboard.png)
+
+### Retailer Authenticity Deck
+![Retailer Dashboard - Store Intelligence & Scanning](frontend/public/retailer-dashboard.png)
+
+### Supplier Logistics Deck
+![Supplier Hub - Supply Chain & Verification](frontend/public/supplier-dashboard.png)
+
+### Support Control Center
+![Admin Support - Email Operations & Chat Management](frontend/public/support-center.png)
+
 ## Prerequisites
 
 - Node.js 18+ and npm
@@ -99,15 +123,6 @@ cd backend; copy .env.example .env; notepad .env
 cd ../frontend; copy .env.example .env; notepad .env
 ```
 
-1. Import the SQL dump into PostgreSQL
-
-Create a database (e.g., postgres) and import `sqldump.sql`.
-
-```powershell
-# Example using psql
-psql -U postgres -h localhost -d postgres -f sqldump.sql
-```
-
 1. Run backend and frontend
 
 ```powershell
@@ -122,15 +137,6 @@ npm start
 
 
 
-## Database setup (import SQL dump)
-
-The repo includes `sqldump.sql` with all tables, sequences, constraints, and sample data structures (auth, profile, product, product_scans, login_attempts, activity_log). To import:
-
-```powershell
-psql -U <user> -h <host> -d <db> -f sqldump.sql
-```
-
-Ensure your backend `.env` matches the DB you imported into.
 
 ## Configuration (env vars)
 

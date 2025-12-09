@@ -145,6 +145,25 @@ export const SupportIcon = ({ className = baseIconClass }) => (
   </svg>
 );
 
+export const InventoryIcon = ({ className = baseIconClass }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M3 7l9-4 9 4-9 4-9-4z"
+    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10l9 4 9-4V7" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v10" />
+  </svg>
+);
+
 export const ShieldIcon = ({ className = baseIconClass }) => (
   <svg
     className={className}
@@ -224,6 +243,13 @@ export const SIDEBAR_LINKS = [
     to: "/analytics",
     tone: "purple",
     badge: { label: "Pro", tone: "purple" },
+  },
+  {
+    icon: InventoryIcon,
+    label: "Inventory",
+    to: "/inventory",
+    tone: "emerald",
+    badge: { label: "New", tone: "emerald" },
   },
   {
     icon: UsersIcon,

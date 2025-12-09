@@ -37,3 +37,67 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
+
+.glass-select {
+  --glass-select-surface: radial-gradient(circle at 10% 20%, rgba(64, 76, 180, 0.35), rgba(12, 16, 36, 0.85)),
+    linear-gradient(120deg, rgba(18, 23, 54, 0.9), rgba(20, 23, 58, 0.75));
+  background-image: var(--glass-select-surface);
+  color: #f8f7ff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  caret-color: #f4f2ff;
+  transition: background 220ms ease, border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.glass-select:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+}
+
+.glass-select option {
+  background-color: #090d20;
+  color: #f6f4ff;
+  font-weight: 500;
+}
+
+.glass-select option:checked,
+.glass-select option:hover,
+.glass-select option:focus {
+  background-color: #4338ca;
+  color: #fdfcff;
+}
+
+.glass-select::-ms-expand {
+  display: none;
+}
+
+.glass-input {
+  --glass-input-surface: radial-gradient(circle at 15% 15%, rgba(87, 110, 255, 0.22), rgba(8, 10, 26, 0.92)),
+    linear-gradient(130deg, rgba(11, 15, 33, 0.95), rgba(15, 20, 42, 0.82));
+  background-image: var(--glass-input-surface);
+  color: #f9f8ff;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  caret-color: #f6f5ff;
+  transition: border-color 200ms ease, box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.glass-input::placeholder {
+  color: rgba(236, 236, 255, 0.5);
+}
+
+.glass-input:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.28),
+    0 18px 45px -32px rgba(12, 18, 48, 0.6);
+}

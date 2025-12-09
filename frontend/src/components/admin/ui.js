@@ -9,6 +9,12 @@ export const gradientBorderClass =
 export const glassButtonClass =
   "inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/30 hover:bg-white/10";
 
+export const glassSelectClass =
+  "glass-select appearance-none border border-white/15 bg-gradient-to-r from-[#121736]/90 via-[#171f3d]/85 to-[#1a2149]/80 text-[0.95rem] font-medium text-white/90 shadow-[0_25px_60px_-45px_rgba(15,12,60,0.9)] focus:border-white/60 focus:outline-none focus:ring-2 focus:ring-indigo-400/40 transition";
+
+export const glassInputClass =
+  "glass-input border border-white/15 bg-gradient-to-r from-[#10142d]/92 via-[#141a38]/88 to-[#141a38]/82 text-white/90 placeholder-white/45 shadow-[0_25px_60px_-55px_rgba(10,12,48,0.95)] focus:border-white/60 focus:outline-none focus:ring-2 focus:ring-sky-400/30 transition";
+
 export const badgePillClass =
   "inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white/80";
 

@@ -344,43 +344,73 @@ const AddProduct = () => {
     manuDate,
   ]);
 
-  const addProductRecord = useCallback(async () => {
-    const payload = {
-      serialNumber,
-      name,
-      brand,
-      username: auth?.username || auth?.user || null,
-      contractAddress: CONTRACT_ADDRESS,
-    };
-    try {
-      await axios.post(`${apiBaseUrl}/addproduct`, JSON.stringify(payload), {
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (error) {
-      if (error?.response?.status === 409) {
-        toast.error("This serial number is already registered.");
-      } else {
-        console.error("Failed to persist product record", error);
-        toast.error(
-          error?.response?.data?.message || "Failed to persist product record"
-        );
+  const addProductRecord = useCallback(
+    async ({ productImage } = {}) => {
+      const normalizedDescription = description.trim();
+      const latValue = Number(manuLatitude);
+      const lonValue = Number(manuLongitude);
+
+      const metadataPayload = {
+        manufacturerDisplayName: manuName || auth?.user || null,
+        manufacturingTimestampUnix: manuDate,
+        manufacturingLocation: manuLocation || null,
+      };
+      if (Number.isFinite(latValue) || Number.isFinite(lonValue)) {
+        metadataPayload.coordinates = {
+          latitude: Number.isFinite(latValue) ? latValue : null,
+          longitude: Number.isFinite(lonValue) ? lonValue : null,
+        };
       }
+
+      const payload = {
+        serialNumber,
+        name,
+        brand,
+        description: normalizedDescription,
+        username: auth?.username || auth?.user || null,
+        contractAddress: CONTRACT_ADDRESS,
+        productImage: productImage || null,
+        location: manuLocation || null,
+        metadata: metadataPayload,
+      };
+
       try {
-        error.__handled = true;
-      } catch (assignError) {
-        // ignore if property assignment fails
+        await axios.post(`${apiBaseUrl}/addproduct`, JSON.stringify(payload), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (error) {
+        if (error?.response?.status === 409) {
+          toast.error("This serial number is already registered.");
+        } else {
+          console.error("Failed to persist product record", error);
+          toast.error(
+            error?.response?.data?.message || "Failed to persist product record"
+          );
+        }
+        try {
+          error.__handled = true;
+        } catch (assignError) {
+          // ignore if property assignment fails
+        }
+        throw error;
       }
-      throw error;
-    }
-  }, [
-    apiBaseUrl,
-    auth?.username,
-    auth?.user,
-    brand,
-    name,
-    serialNumber,
-    CONTRACT_ADDRESS,
-  ]);
+    },
+    [
+      CONTRACT_ADDRESS,
+      apiBaseUrl,
+      auth?.user,
+      auth?.username,
+      brand,
+      description,
+      manuDate,
+      manuLatitude,
+      manuLocation,
+      manuLongitude,
+      manuName,
+      name,
+      serialNumber,
+    ]
+  );
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -413,13 +443,17 @@ const AddProduct = () => {
       if (!uploaded) {
         return;
       }
+      if (!uploaded.fileName) {
+        toast.error("Image upload response missing filename.");
+        return;
+      }
 
       setLoadingMessage("Awaiting wallet signature…");
       const txHash = await registerProductOnChain();
       console.log("Register product tx", txHash);
 
       setLoadingMessage("Persisting off-chain record…");
-      await addProductRecord();
+      await addProductRecord({ productImage: uploaded.fileName });
 
       generateQRCode(serialNumber);
       setLoadingMessage("");
@@ -805,12 +839,19 @@ const AddProduct = () => {
                 <Divider className="my-6" />
                 <div className="flex flex-col gap-4">
                   <div className="flex justify-center">
-                    <QRCode
-                      id="add-product-qr-canvas"
-                      value={qrData}
-                      size={256}
-                      className="rounded-xl border border-white/10"
-                    />
+                    <div className="rounded-[32px] border border-slate-200/80 bg-white p-6 text-center shadow-[0_40px_120px_-60px_rgba(15,18,54,0.85)]">
+                      <QRCode
+                        id="add-product-qr-canvas"
+                        value={qrData}
+                        size={256}
+                        bgColor="#ffffff"
+                        fgColor="#0f172a"
+                        includeMargin
+                      />
+                      <p className="mt-4 text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
+                        Scan-ready
+                      </p>
+                    </div>
                   </div>
                   <button
                     type="button"

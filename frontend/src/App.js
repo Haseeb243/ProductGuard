@@ -32,6 +32,10 @@ import SupplierScanner from "./components/pages/SupplierScanner";
 import RetailerScanner from "./components/pages/RetailerScanner";
 import RetailerChat from "./components/pages/RetailerChat";
 import RetailerWallet from "./components/pages/RetailerWallet";
+import AdminInventory from "./components/pages/AdminInventory";
+import ManufacturerInventory from "./components/pages/ManufacturerInventory";
+import SupplierInventory from "./components/pages/SupplierInventory";
+import RetailerInventory from "./components/pages/RetailerInventory";
 
 function App() {
   return (
@@ -74,6 +78,7 @@ function App() {
             path="/analytics"
             element={<AnalyticsDashboard />}
           ></Route>
+          <Route exact path="/inventory" element={<AdminInventory />}></Route>
         </Route>
 
         <Route
@@ -143,6 +148,11 @@ function App() {
             path="/manufacturer-wallet"
             element={<ManufacturerWallet />}
           ></Route>
+          <Route
+            exact
+            path="/manufacturer/inventory"
+            element={<ManufacturerInventory />}
+          ></Route>
         </Route>
 
         <Route element={<RequireAuth allowedRoles={["supplier"]} />}>
@@ -158,6 +168,11 @@ function App() {
             path="/supplier/wallet"
             element={<SupplierWallet />}
           ></Route>
+          <Route
+            exact
+            path="/supplier/inventory"
+            element={<SupplierInventory />}
+          ></Route>
         </Route>
 
         <Route element={<RequireAuth allowedRoles={["retailer"]} />}>
@@ -172,6 +187,11 @@ function App() {
             exact
             path="/retailer/wallet"
             element={<RetailerWallet />}
+          ></Route>
+          <Route
+            exact
+            path="/retailer/inventory"
+            element={<RetailerInventory />}
           ></Route>
         </Route>
 
