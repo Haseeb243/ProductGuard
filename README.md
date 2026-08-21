@@ -238,11 +238,6 @@ Identeefi address: 0xABCDEF...
 - QR scanning/contract address mismatch: ensure `REACT_APP_CONTRACT_ADDRESS` matches the QR code that was generated.
 - Google geocoding not working: supply a valid `REACT_APP_GOOGLE_MAPS_API_KEY` or leave it unset to disable reverse geocoding.
 
-## Security notes
-
-- Secrets and host URLs are managed via `.env` files and not hardcoded in source.
-- Frontend env values are public by nature; restrict API keys at the provider level (domain, API, quotas) or proxy via backend when possible.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
